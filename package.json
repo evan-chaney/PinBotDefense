@@ -1,0 +1,22 @@
+{
+  "name": "pinbotdefense",
+  "version": "1.0.0",
+  "description": "Tower Defense Game with Robots that shoot pins",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint pinbot-defense.html",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:39369/git/evan-chaney/PinBotDefense"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "eslint": "^10.0.3",
+    "eslint-plugin-html": "^8.1.4"
+  }
+}
