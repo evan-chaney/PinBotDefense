@@ -183,6 +183,8 @@ const SP={
     desc:'Linked bomb fires 5 times before disappearing.',range:80},
   satlas:{name:'SATELLITE LASER',cost:300,k:'tower',
     desc:'Satellite sweeps the map — laser destroys all balloons it crosses.'},
+  sawblade:{name:'SAW BLADE',cost:300,k:'tower',
+    desc:'Spinning saw spirals outward from slot — shreds every balloon it crosses. Ignores shields.'},
 };
 
 function init(){
@@ -367,6 +369,40 @@ function upd(dt){
     }else if(t.kind==='bomb'){
       if(t.fuse>0&&t.cdt>0)t.cdt-=dt;
       else if(t.fuse>0&&t.cdt<=0)detBomb(sl,t);
+    }else if(t.spkind==='sawblade'){
+      if(!t.active)continue;
+      const angSpd=Math.PI*2/2.8;
+      t.angle+=angSpd*dt;
+      const progress=Math.min(t.angle/(Math.PI*2),1);
+      const orbitR=20+progress*(t.maxOrbitR-20);
+      t.bladeX=sl.x+Math.cos(t.angle)*orbitR;
+      t.bladeY=sl.y+Math.sin(t.angle)*orbitR;
+      t.trail.push({x:t.bladeX,y:t.bladeY});
+      if(t.trail.length>10)t.trail.shift();
+      const bladeR=20;
+      for(const b of G.bal){
+        if(b.dead||t.hitIds.includes(b.id))continue;
+        const bp=posAt(b.d);
+        if(Math.hypot(t.bladeX-bp.x,t.bladeY-bp.y)<bladeR+b.r){
+          t.hitIds.push(b.id);
+          b.hp-=1;
+          if(b.hp<=0){
+            b.dead=true;
+            const def=BALDEF[b.type];
+            if(def.downgrades){
+              const child=mkBal(def.downgrades,b.d,false);G.newBals.push(child);
+              downgradePart(posAt(b.d),def.col);
+            }else{
+              G.money+=def.rew;G.popped++;
+              const p2=posAt(b.d);popPart(p2,def.col);
+              G.flt.push({x:p2.x+((Math.random()-.5)*16),y:p2.y-14,txt:'+$'+def.rew,life:.8,max:.8,big:false});
+              hud();
+            }
+            for(let i=0;i<6;i++)G.part.push({x:bp.x,y:bp.y,vx:(Math.random()-.5)*280,vy:(Math.random()-.5)*280,life:.28,max:.28,col:i<3?'#ffee44':'#ff8800',r:Math.random()*2.5+1});
+          }
+        }
+      }
+      if(t.angle>=Math.PI*2){t.one_used=true;sl.tower=null;}
     }
   }
 
@@ -481,6 +517,7 @@ function draw(){
     else if(t.kind==='bomb')drawBomb(sl.x,sl.y,t);
     else if(t.spkind==='reloader')drawReloader(sl.x,sl.y,t);
     else if(t.spkind==='satlas')drawSatLas(sl.x,sl.y,t);
+    else if(t.spkind==='sawblade')drawSawBladeSlot(sl.x,sl.y,t);
     ctx.restore();
   }
 
@@ -558,6 +595,21 @@ function draw(){
     ctx.strokeStyle=def.kn;ctx.lineWidth=.9;
     ctx.beginPath();ctx.moveTo(pos.x,pos.y+b.r+2);
     ctx.quadraticCurveTo(pos.x+2,pos.y+b.r+6,pos.x+1,pos.y+b.r+9);ctx.stroke();
+  }
+
+  // Active saw blades (drawn on top of balloons)
+  for(const sl of G.slots){
+    const t=sl.tower;if(!t||t.one_used||t.spkind!=='sawblade'||!t.active)continue;
+    if(t.trail&&t.trail.length>1){
+      for(let i=1;i<t.trail.length;i++){
+        const a=(i/t.trail.length)*.55;
+        ctx.globalAlpha=a;ctx.strokeStyle='#ffcc00';ctx.lineWidth=3;ctx.lineCap='round';
+        ctx.beginPath();ctx.moveTo(t.trail[i-1].x,t.trail[i-1].y);ctx.lineTo(t.trail[i].x,t.trail[i].y);ctx.stroke();
+      }
+      ctx.globalAlpha=1;
+    }
+    drawSawIcon(t.bladeX,t.bladeY,20,t.angle*5);
+    ctx.fillStyle='rgba(255,200,0,.12)';ctx.beginPath();ctx.arc(t.bladeX,t.bladeY,30,0,Math.PI*2);ctx.fill();
   }
 
   // Satellite lasers
@@ -708,6 +760,41 @@ function drawSatLas(x,y,t){
     ctx.fillText('✓',x,y);ctx.textAlign='left';ctx.textBaseline='alphabetic';
   }
 }
+function drawSawBladeSlot(x,y,t){
+  ctx.fillStyle='#1a1208';ctx.strokeStyle=t.active?'#2a1808':'#c8800a';ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(x,y,16,0,Math.PI*2);ctx.fill();ctx.stroke();
+  if(!t.active){
+    ctx.strokeStyle='#805000';ctx.lineWidth=1;ctx.beginPath();ctx.arc(x,y,11,0,Math.PI*2);ctx.stroke();
+    drawSawIcon(x,y,11,Date.now()*.0008);
+    ctx.fillStyle='rgba(200,128,0,.15)';ctx.beginPath();ctx.arc(x,y,16,0,Math.PI*2);ctx.fill();
+  }
+}
+
+function drawSawIcon(x,y,r,angle){
+  const teeth=10;
+  ctx.save();ctx.translate(x,y);ctx.rotate(angle);
+  ctx.beginPath();
+  for(let i=0;i<teeth;i++){
+    const a1=(i/teeth)*Math.PI*2;
+    const a2=((i+.35)/teeth)*Math.PI*2;
+    const a3=((i+.65)/teeth)*Math.PI*2;
+    const a4=((i+1)/teeth)*Math.PI*2;
+    if(i===0)ctx.moveTo(Math.cos(a1)*r*.75,Math.sin(a1)*r*.75);
+    else ctx.lineTo(Math.cos(a1)*r*.75,Math.sin(a1)*r*.75);
+    ctx.lineTo(Math.cos(a2)*r,Math.sin(a2)*r);
+    ctx.lineTo(Math.cos(a3)*r,Math.sin(a3)*r);
+    ctx.lineTo(Math.cos(a4)*r*.75,Math.sin(a4)*r*.75);
+  }
+  ctx.closePath();
+  const grd=ctx.createRadialGradient(0,0,r*.15,0,0,r);
+  grd.addColorStop(0,'#e8e8e8');grd.addColorStop(.6,'#a8a8b0');grd.addColorStop(1,'#585860');
+  ctx.fillStyle=grd;ctx.fill();
+  ctx.strokeStyle='#d0d0e0';ctx.lineWidth=.7;ctx.stroke();
+  ctx.fillStyle='#181820';ctx.beginPath();ctx.arc(0,0,r*.22,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#888898';ctx.lineWidth=.8;ctx.beginPath();ctx.arc(0,0,r*.22,0,Math.PI*2);ctx.stroke();
+  ctx.restore();
+}
+
 function openModal(title,items){
   document.getElementById('mt').textContent=title;
   const mo=document.getElementById('mo');mo.innerHTML='';
@@ -752,6 +839,15 @@ function slotClick(sl){
         {label:'🗑  SELL',earn:sv,danger:true,desc:'Recover $'+sv,action:()=>{G.money+=sv;sl.tower=null;hud();}},
       ]);return;
     }
+    // Superpower: Saw Blade
+    if(t.spkind==='sawblade'){
+      if(t.active){openModal('SAW BLADE',[{label:'⚙  IN FLIGHT...',desc:'Saw blade is currently sweeping the screen',disabled:true}]);return;}
+      const sv=Math.floor(SP.sawblade.cost*.5);
+      openModal('SAW BLADE',[
+        {label:'⚙  DEPLOY SAW',desc:'Spirals outward from slot — shreds every balloon it crosses. Shields ignored.',action:()=>fireSawBlade(sl)},
+        {label:'🗑  SELL',earn:sv,danger:true,desc:'Recover $'+sv,action:()=>{G.money+=sv;sl.tower=null;hud();}},
+      ]);return;
+    }
     const key=t.kind;const items=[];
     if(key==='bomb'&&t.fuse<=0)items.push({label:'⏱  SET COUNTDOWN',desc:'Arm bomb — game pauses while selecting',action:()=>openBombTimer(sl)});
     if(key==='bomb'&&t.fuse>0&&t.cdt>0)items.push({label:'⏱  CHANGE COUNTDOWN',desc:'Reopen timer (game pauses)',action:()=>openBombTimer(sl)});
@@ -780,6 +876,8 @@ function slotClick(sl){
         disabled:G.money<SP.reloader.cost,action:()=>placeSP(sl,'reloader')});
       items.push({label:SP.satlas.name,desc:SP.satlas.desc,cost:SP.satlas.cost,
         disabled:G.money<SP.satlas.cost,action:()=>placeSP(sl,'satlas')});
+      items.push({label:SP.sawblade.name,desc:SP.sawblade.desc,cost:SP.sawblade.cost,
+        disabled:G.money<SP.sawblade.cost,action:()=>placeSP(sl,'sawblade')});
     }
     openModal('PLACE TOWER / POWER',items);
   }
@@ -798,12 +896,27 @@ function placeSP(sl,spkind){
       }
     }
   }
+  if(spkind==='sawblade'){
+    t.angle=0;t.active=false;t.hitIds=[];t.trail=[];t.bladeX=sl.x;t.bladeY=sl.y;t.maxOrbitR=0;
+  }
   sl.tower=t;hud();
 }
 
 function fireSatLas(sl){
   sl.tower.used=true;
   G.lasers.push({x:-60,vx:180,satY:18,fired:false,srcSlot:sl,dead:false,beamAlpha:0});
+}
+
+function fireSawBlade(sl){
+  const t=sl.tower;
+  t.active=true;t.angle=0;t.hitIds=[];t.trail=[];
+  t.bladeX=sl.x;t.bladeY=sl.y;
+  t.maxOrbitR=Math.max(
+    Math.hypot(sl.x,sl.y),
+    Math.hypot(W-sl.x,sl.y),
+    Math.hypot(sl.x,H-sl.y),
+    Math.hypot(W-sl.x,H-sl.y)
+  )+20;
 }
 
 function openBombTimer(sl){
