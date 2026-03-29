@@ -183,7 +183,7 @@ const SP={
     desc:'Linked bomb fires 5 times before disappearing.',range:80},
   satlas:{name:'SATELLITE LASER',cost:300,k:'tower',
     desc:'Satellite sweeps the map — laser destroys all balloons it crosses.'},
-  sawblade:{name:'SAW BLADE',cost:300,k:'path',
+  sawblade:{name:'SAW BLADE',cost:600,k:'path',
     desc:'Stationary spinning blade — deals 2 damage to every balloon that crosses it, ignoring shields.'},
 };
 
@@ -745,13 +745,16 @@ function drawSatLas(x,y,t){
   }
 }
 function drawSawBlade(x,y,t){
-  const ang=Date.now()*.005;
+  const ang=Date.now()*.014;
   ctx.fillStyle='#1a0808';ctx.strokeStyle='#c83010';ctx.lineWidth=1.5;
   roundRect(x-14,y-6,28,18,3);ctx.fill();roundRect(x-14,y-6,28,18,3);ctx.stroke();
   ctx.strokeStyle='#6a1808';ctx.lineWidth=.8;
   [[x-10,y-3],[x+10,y-3],[x-10,y+9],[x+10,y+9]].forEach(([bx,by])=>{ctx.beginPath();ctx.arc(bx,by,1.5,0,Math.PI*2);ctx.stroke();});
-  drawSawIcon(x,y+3,10,ang);
-  ctx.fillStyle='rgba(220,50,0,.12)';ctx.beginPath();ctx.arc(x,y+3,13,0,Math.PI*2);ctx.fill();
+  // motion blur: draw faded ghost copies trailing behind the blade
+  for(let i=3;i>=1;i--){ctx.globalAlpha=(i/3)*.18;drawSawIcon(x,y+3,13,ang-i*.35);}
+  ctx.globalAlpha=1;
+  drawSawIcon(x,y+3,13,ang);
+  ctx.fillStyle='rgba(220,50,0,.12)';ctx.beginPath();ctx.arc(x,y+3,16,0,Math.PI*2);ctx.fill();
 }
 
 function drawSawIcon(x,y,r,angle){
