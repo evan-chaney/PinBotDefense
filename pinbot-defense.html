@@ -374,21 +374,33 @@ function upd(dt){
       t.cdt=1.0;
       const inR=G.bal.filter(b=>!b.dead).filter(b=>{const p=posAt(b.d);return Math.hypot(p.x-sl.x,p.y-sl.y)<28;});
       for(const b of inR){
-        b.hp-=2;
-        if(b.hp<=0){
-          b.dead=true;
-          const def=BALDEF[b.type];
-          if(def.downgrades){
-            const child=mkBal(def.downgrades,b.d,false);G.newBals.push(child);
-            downgradePart(posAt(b.d),def.col);
+        const pos=posAt(b.d);
+        b.dead=true;
+        const def=BALDEF[b.type];
+        if(def.downgrades){
+          // Level 1 death: downgrade particle but no reward — then immediately kill the child too
+          downgradePart(pos,def.col);
+          const childDef=BALDEF[def.downgrades];
+          if(childDef.downgrades){
+            // Child also has a downgrade — spawn grandchild but stop there
+            const grandchild=mkBal(childDef.downgrades,b.d,false);
+            G.newBals.push(grandchild);
+            downgradePart(pos,childDef.col);
           }else{
-            G.money+=def.rew;G.popped++;
-            const p2=posAt(b.d);popPart(p2,def.col);
-            G.flt.push({x:p2.x+((Math.random()-.5)*16),y:p2.y-14,txt:'+$'+def.rew,life:.8,max:.8,big:false});
+            // Child is final tier — give its reward
+            G.money+=childDef.rew;G.popped++;
+            popPart(pos,childDef.col);
+            G.flt.push({x:pos.x+((Math.random()-.5)*16),y:pos.y-14,txt:'+$'+childDef.rew,life:.8,max:.8,big:false});
             hud();
           }
-          for(let i=0;i<5;i++)G.part.push({x:sl.x,y:sl.y,vx:(Math.random()-.5)*200,vy:(Math.random()-.5)*200,life:.3,max:.3,col:i<2?'#ffee44':'#ff8800',r:Math.random()*3+1.5});
+        }else{
+          // Already final tier — give reward directly
+          G.money+=def.rew;G.popped++;
+          popPart(pos,def.col);
+          G.flt.push({x:pos.x+((Math.random()-.5)*16),y:pos.y-14,txt:'+$'+def.rew,life:.8,max:.8,big:false});
+          hud();
         }
+        for(let i=0;i<5;i++)G.part.push({x:sl.x,y:sl.y,vx:(Math.random()-.5)*200,vy:(Math.random()-.5)*200,life:.3,max:.3,col:i<2?'#ffee44':'#ff8800',r:Math.random()*3+1.5});
       }
     }
   }
