@@ -245,10 +245,14 @@ function dmgBal(b,dmg){
     b.dead=true;
     const def=BALDEF[b.type];
     if(def.downgrades){
+      G.money+=def.rew;
+      const p=posAt(b.d);
+      downgradePart(p,def.col);
+      G.flt.push({x:p.x+((Math.random()-.5)*16),y:p.y-14,txt:'+$'+def.rew,life:.8,max:.8,big:false});
       const child=mkBal(def.downgrades,b.d,false);
       spawnedId=child.id;
       G.newBals.push(child);
-      downgradePart(posAt(b.d),def.col);
+      hud();
     }else{
       G.money+=def.rew;G.popped++;
       const p=posAt(b.d);
@@ -378,21 +382,24 @@ function upd(dt){
         b.dead=true;
         const def=BALDEF[b.type];
         if(def.downgrades){
-          // Level 1 death: downgrade particle but no reward — then immediately kill the child too
+          // Level 1 death: pay reward for this tier, then immediately kill the child too
+          G.money+=def.rew;
           downgradePart(pos,def.col);
           const childDef=BALDEF[def.downgrades];
           if(childDef.downgrades){
-            // Child also has a downgrade — spawn grandchild but stop there
+            // Child also has a downgrade — pay its reward and spawn grandchild
+            G.money+=childDef.rew;
+            downgradePart(pos,childDef.col);
             const grandchild=mkBal(childDef.downgrades,b.d,false);
             G.newBals.push(grandchild);
-            downgradePart(pos,childDef.col);
+            G.flt.push({x:pos.x+((Math.random()-.5)*16),y:pos.y-14,txt:'+$'+(def.rew+childDef.rew),life:.8,max:.8,big:false});
           }else{
-            // Child is final tier — give its reward
+            // Child is final tier — pay its reward too
             G.money+=childDef.rew;G.popped++;
             popPart(pos,childDef.col);
-            G.flt.push({x:pos.x+((Math.random()-.5)*16),y:pos.y-14,txt:'+$'+childDef.rew,life:.8,max:.8,big:false});
-            hud();
+            G.flt.push({x:pos.x+((Math.random()-.5)*16),y:pos.y-14,txt:'+$'+(def.rew+childDef.rew),life:.8,max:.8,big:false});
           }
+          hud();
         }else{
           // Already final tier — give reward directly
           G.money+=def.rew;G.popped++;
