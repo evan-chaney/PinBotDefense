@@ -106,7 +106,7 @@ const SLOTS=[
 // hi/lo: gradient highlight/shadow; kn: knot color; downgrades: type to spawn on death or null
 const BALDEF={
   blue: {hp:1,spd:63,col:'#5ab4e8',hi:'#b0e8ff',lo:'#1878b8',kn:'#1670a8',rew:1,r:10,downgrades:null},
-  red:  {hp:1,spd:63,col:'#e85a5a',hi:'#ffb0b0',lo:'#b82020',kn:'#a01010',rew:2,r:10,downgrades:'blue'},
+  red:  {hp:1,spd:63,col:'#e85a5a',hi:'#ffb0b0',lo:'#b82020',kn:'#a01010',rew:2,r:10,downgrades:'green'},
   green:{hp:1,spd:63,col:'#4de878',hi:'#b0ffc0',lo:'#18a838',kn:'#10a028',rew:2,r:10,downgrades:'blue'},
 };
 
@@ -183,6 +183,8 @@ const SP={
     desc:'Linked bomb fires 5 times before disappearing.',range:80},
   satlas:{name:'SATELLITE LASER',cost:300,k:'tower',
     desc:'Satellite sweeps the map — laser destroys all balloons it crosses.'},
+  sawblade:{name:'SAW BLADE',cost:600,k:'path',
+    desc:'Stationary spinning blade — deals 2 damage to every balloon that crosses it, ignoring shields.'},
 };
 
 function init(){
@@ -243,10 +245,14 @@ function dmgBal(b,dmg){
     b.dead=true;
     const def=BALDEF[b.type];
     if(def.downgrades){
+      G.money+=def.rew;
+      const p=posAt(b.d);
+      downgradePart(p,def.col);
+      G.flt.push({x:p.x+((Math.random()-.5)*16),y:p.y-14,txt:'+$'+def.rew,life:.8,max:.8,big:false});
       const child=mkBal(def.downgrades,b.d,false);
       spawnedId=child.id;
       G.newBals.push(child);
-      downgradePart(posAt(b.d),def.col);
+      hud();
     }else{
       G.money+=def.rew;G.popped++;
       const p=posAt(b.d);
@@ -367,6 +373,42 @@ function upd(dt){
     }else if(t.kind==='bomb'){
       if(t.fuse>0&&t.cdt>0)t.cdt-=dt;
       else if(t.fuse>0&&t.cdt<=0)detBomb(sl,t);
+    }else if(t.spkind==='sawblade'){
+      if(t.cdt>0)continue;
+      t.cdt=1.0;
+      const inR=G.bal.filter(b=>!b.dead).filter(b=>{const p=posAt(b.d);return Math.hypot(p.x-sl.x,p.y-sl.y)<28;});
+      for(const b of inR){
+        const pos=posAt(b.d);
+        b.dead=true;
+        const def=BALDEF[b.type];
+        if(def.downgrades){
+          // Level 1 death: pay reward for this tier, then immediately kill the child too
+          G.money+=def.rew;
+          downgradePart(pos,def.col);
+          const childDef=BALDEF[def.downgrades];
+          if(childDef.downgrades){
+            // Child also has a downgrade — pay its reward and spawn grandchild
+            G.money+=childDef.rew;
+            downgradePart(pos,childDef.col);
+            const grandchild=mkBal(childDef.downgrades,b.d,false);
+            G.newBals.push(grandchild);
+            G.flt.push({x:pos.x+((Math.random()-.5)*16),y:pos.y-14,txt:'+$'+(def.rew+childDef.rew),life:.8,max:.8,big:false});
+          }else{
+            // Child is final tier — pay its reward too
+            G.money+=childDef.rew;G.popped++;
+            popPart(pos,childDef.col);
+            G.flt.push({x:pos.x+((Math.random()-.5)*16),y:pos.y-14,txt:'+$'+(def.rew+childDef.rew),life:.8,max:.8,big:false});
+          }
+          hud();
+        }else{
+          // Already final tier — give reward directly
+          G.money+=def.rew;G.popped++;
+          popPart(pos,def.col);
+          G.flt.push({x:pos.x+((Math.random()-.5)*16),y:pos.y-14,txt:'+$'+def.rew,life:.8,max:.8,big:false});
+          hud();
+        }
+        for(let i=0;i<5;i++)G.part.push({x:sl.x,y:sl.y,vx:(Math.random()-.5)*200,vy:(Math.random()-.5)*200,life:.3,max:.3,col:i<2?'#ffee44':'#ff8800',r:Math.random()*3+1.5});
+      }
     }
   }
 
@@ -481,6 +523,7 @@ function draw(){
     else if(t.kind==='bomb')drawBomb(sl.x,sl.y,t);
     else if(t.spkind==='reloader')drawReloader(sl.x,sl.y,t);
     else if(t.spkind==='satlas')drawSatLas(sl.x,sl.y,t);
+    else if(t.spkind==='sawblade')drawSawBlade(sl.x,sl.y,t);
     ctx.restore();
   }
 
@@ -708,6 +751,44 @@ function drawSatLas(x,y,t){
     ctx.fillText('✓',x,y);ctx.textAlign='left';ctx.textBaseline='alphabetic';
   }
 }
+function drawSawBlade(x,y,t){
+  const ang=Date.now()*.014;
+  ctx.fillStyle='#1a0808';ctx.strokeStyle='#c83010';ctx.lineWidth=1.5;
+  roundRect(x-14,y-6,28,18,3);ctx.fill();roundRect(x-14,y-6,28,18,3);ctx.stroke();
+  ctx.strokeStyle='#6a1808';ctx.lineWidth=.8;
+  [[x-10,y-3],[x+10,y-3],[x-10,y+9],[x+10,y+9]].forEach(([bx,by])=>{ctx.beginPath();ctx.arc(bx,by,1.5,0,Math.PI*2);ctx.stroke();});
+  // motion blur: draw faded ghost copies trailing behind the blade
+  for(let i=3;i>=1;i--){ctx.globalAlpha=(i/3)*.18;drawSawIcon(x,y+3,13,ang-i*.35);}
+  ctx.globalAlpha=1;
+  drawSawIcon(x,y+3,13,ang);
+  ctx.fillStyle='rgba(220,50,0,.12)';ctx.beginPath();ctx.arc(x,y+3,16,0,Math.PI*2);ctx.fill();
+}
+
+function drawSawIcon(x,y,r,angle){
+  const teeth=10;
+  ctx.save();ctx.translate(x,y);ctx.rotate(angle);
+  ctx.beginPath();
+  for(let i=0;i<teeth;i++){
+    const a1=(i/teeth)*Math.PI*2;
+    const a2=((i+.35)/teeth)*Math.PI*2;
+    const a3=((i+.65)/teeth)*Math.PI*2;
+    const a4=((i+1)/teeth)*Math.PI*2;
+    if(i===0)ctx.moveTo(Math.cos(a1)*r*.75,Math.sin(a1)*r*.75);
+    else ctx.lineTo(Math.cos(a1)*r*.75,Math.sin(a1)*r*.75);
+    ctx.lineTo(Math.cos(a2)*r,Math.sin(a2)*r);
+    ctx.lineTo(Math.cos(a3)*r,Math.sin(a3)*r);
+    ctx.lineTo(Math.cos(a4)*r*.75,Math.sin(a4)*r*.75);
+  }
+  ctx.closePath();
+  const grd=ctx.createRadialGradient(0,0,r*.15,0,0,r);
+  grd.addColorStop(0,'#e8e8e8');grd.addColorStop(.6,'#a8a8b0');grd.addColorStop(1,'#585860');
+  ctx.fillStyle=grd;ctx.fill();
+  ctx.strokeStyle='#d0d0e0';ctx.lineWidth=.7;ctx.stroke();
+  ctx.fillStyle='#181820';ctx.beginPath();ctx.arc(0,0,r*.22,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#888898';ctx.lineWidth=.8;ctx.beginPath();ctx.arc(0,0,r*.22,0,Math.PI*2);ctx.stroke();
+  ctx.restore();
+}
+
 function openModal(title,items){
   document.getElementById('mt').textContent=title;
   const mo=document.getElementById('mo');mo.innerHTML='';
@@ -752,6 +833,14 @@ function slotClick(sl){
         {label:'🗑  SELL',earn:sv,danger:true,desc:'Recover $'+sv,action:()=>{G.money+=sv;sl.tower=null;hud();}},
       ]);return;
     }
+    // Superpower: Saw Blade
+    if(t.spkind==='sawblade'){
+      const sv=Math.floor(SP.sawblade.cost*.5);
+      openModal('SAW BLADE',[
+        {label:'⚙  SPINNING — ACTIVE',desc:'Deals 2 damage to every balloon that crosses it. Shields ignored.',disabled:true},
+        {label:'🗑  SELL',earn:sv,danger:true,desc:'Recover $'+sv,action:()=>{G.money+=sv;sl.tower=null;hud();}},
+      ]);return;
+    }
     const key=t.kind;const items=[];
     if(key==='bomb'&&t.fuse<=0)items.push({label:'⏱  SET COUNTDOWN',desc:'Arm bomb — game pauses while selecting',action:()=>openBombTimer(sl)});
     if(key==='bomb'&&t.fuse>0&&t.cdt>0)items.push({label:'⏱  CHANGE COUNTDOWN',desc:'Reopen timer (game pauses)',action:()=>openBombTimer(sl)});
@@ -773,7 +862,13 @@ function slotClick(sl){
       label:TD[key].name,desc:descs[key],cost:TD[key].cost,disabled:G.money<TD[key].cost,
       action:()=>placeTower(sl,key)
     }));
-    // Superpowers — only on tower slots
+    // Superpowers — path slots
+    if(sl.k==='path'){
+      items.push({label:'— SUPERPOWERS —',disabled:true});
+      items.push({label:SP.sawblade.name,desc:SP.sawblade.desc,cost:SP.sawblade.cost,
+        disabled:G.money<SP.sawblade.cost,action:()=>placeSP(sl,'sawblade')});
+    }
+    // Superpowers — tower slots
     if(sl.k==='tower'){
       items.push({label:'— SUPERPOWERS —',disabled:true});
       items.push({label:SP.reloader.name,desc:SP.reloader.desc,cost:SP.reloader.cost,
@@ -798,6 +893,7 @@ function placeSP(sl,spkind){
       }
     }
   }
+  if(spkind==='sawblade'){t.cdt=0;}
   sl.tower=t;hud();
 }
 
