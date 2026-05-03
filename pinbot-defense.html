@@ -52,6 +52,18 @@ body{display:flex;justify-content:center;align-items:center;font-family:'Share T
 #ob{background:#08201a;border:1.5px solid #2a8040;color:#3fb950;font-family:inherit;font-size:12px;padding:10px 28px;cursor:pointer;text-transform:uppercase;letter-spacing:1px;margin-top:6px;border-radius:3px;}
 #ob:hover{background:#1e6030;color:#fff;}
 #infobar{background:#060e18;border-top:1px solid #0d1e2e;font-size:9px;color:#1e3c50;text-align:center;padding:4px;flex-shrink:0;letter-spacing:1px;}
+#ms{display:none;position:fixed;inset:0;z-index:110;background:rgba(4,8,14,.97);flex-direction:column;justify-content:center;align-items:center;padding:16px 12px;}
+#ms.o{display:flex;}
+#ms-title{font-size:18px;font-weight:bold;color:#e6edf3;letter-spacing:4px;text-align:center;margin-bottom:4px;}
+#ms-sub{font-size:9px;color:#1e4a6a;text-transform:uppercase;letter-spacing:2.5px;margin-bottom:18px;}
+#ms-cards{width:100%;max-width:336px;display:flex;flex-direction:column;gap:8px;}
+.mc{background:#060e18;border:1px solid #162d47;border-radius:6px;padding:12px 14px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:background .12s,border-color .12s;}
+.mc:hover{background:#0b1a2e;border-color:#2a5080;}
+.mc:active{background:#162d47;}
+.mc-sw{width:32px;height:32px;border-radius:4px;flex-shrink:0;border:1px solid rgba(255,255,255,.08);}
+.mc-info{flex:1;}
+.mc-name{font-size:13px;color:#c8d8e8;font-weight:bold;letter-spacing:1px;margin-bottom:3px;}
+.mc-desc{font-size:10px;color:#2a5070;line-height:1.4;}
 </style>
 </head>
 <body>
@@ -69,6 +81,7 @@ body{display:flex;justify-content:center;align-items:center;font-family:'Share T
 </div>
 <div id="modal"><div id="mbox"><div id="mt">SELECT</div><div id="mo"></div></div></div>
 <div id="ov"><div id="ot">—</div><div id="os"></div><button id="ob">RETRY</button></div>
+<div id="ms"><div id="ms-title">SELECT MAP</div><div id="ms-sub">Choose your battlefield</div><div id="ms-cards"></div></div>
 <script>
 const CV=document.getElementById('gc'),ctx=CV.getContext('2d');
 const W=360,H=490;let SC=1;
@@ -80,27 +93,88 @@ function resize(){
 }
 window.addEventListener('resize',resize);setTimeout(resize,50);
 
-// PATH
-const WPS=[{x:70,y:-20},{x:70,y:80},{x:295,y:80},{x:295,y:195},{x:70,y:195},{x:70,y:310},{x:295,y:310},{x:295,y:430},{x:295,y:510}];
-const PHW=19;
-let PD;
-{const segs=[];let cum=0;
-for(let i=0;i<WPS.length-1;i++){const dx=WPS[i+1].x-WPS[i].x,dy=WPS[i+1].y-WPS[i].y,l=Math.hypot(dx,dy);segs.push({x0:WPS[i].x,y0:WPS[i].y,x1:WPS[i+1].x,y1:WPS[i+1].y,l,cum});cum+=l;}
-PD={segs,total:cum};}
-function posAt(d){for(const s of PD.segs){if(d<=s.cum+s.l){const t=(d-s.cum)/s.l;return{x:s.x0+t*(s.x1-s.x0),y:s.y0+t*(s.y1-s.y0)};}}const l=PD.segs[PD.segs.length-1];return{x:l.x1,y:l.y1};}
+// MAPS
+const MAPS=[
+  {id:'classic',name:'NEON GRID',desc:'The original. Dark cyberpunk corridors — enemies snake through a glowing circuit board.',
+   wps:[{x:70,y:-20},{x:70,y:80},{x:295,y:80},{x:295,y:195},{x:70,y:195},{x:70,y:310},{x:295,y:310},{x:295,y:430},{x:295,y:510}],
+   slots:[
+     {id:'p0',x:182,y:80,k:'path'},{id:'p1',x:182,y:195,k:'path'},{id:'p2',x:182,y:310,k:'path'},
+     {id:'t0',x:120,y:40,k:'tower'},{id:'t1',x:182,y:40,k:'tower'},{id:'t2',x:245,y:40,k:'tower'},
+     {id:'t3',x:30,y:135,k:'tower'},{id:'t4',x:182,y:135,k:'tower'},{id:'t5',x:340,y:135,k:'tower'},
+     {id:'t6',x:30,y:250,k:'tower'},{id:'t7',x:182,y:250,k:'tower'},{id:'t8',x:340,y:250,k:'tower'},
+     {id:'t9',x:30,y:360,k:'tower'},{id:'t10',x:182,y:360,k:'tower'},{id:'t11',x:340,y:360,k:'tower'},
+     {id:'t12',x:120,y:135,k:'tower'},{id:'t13',x:245,y:135,k:'tower'},
+     {id:'t14',x:120,y:250,k:'tower'},{id:'t15',x:245,y:250,k:'tower'},
+   ],
+   theme:{bg:'#060e18',grid:'#0c1d2d',pathOuter:'#0c1e30',pathMid:'#0f2438',pathInner:'#0e2234',pathDash:'#183448',
+          slotPath:'#1a4020',slotPathX:'#254a28',slotTower:'#1a3450',slotTowerI:'#1f3d60',slotTowerF:'#0e2235',accent:'#58a6ff'}},
 
-// SLOTS
-const SLOTS=[
-  {id:'p0',x:182,y:80,  k:'path'},
-  {id:'p1',x:182,y:195, k:'path'},
-  {id:'p2',x:182,y:310, k:'path'},
-  {id:'t0',x:120,y:40,  k:'tower'},{id:'t1',x:182,y:40, k:'tower'},{id:'t2',x:245,y:40,k:'tower'},
-  {id:'t3',x:30, y:135, k:'tower'},{id:'t4',x:182,y:135,k:'tower'},{id:'t5',x:340,y:135,k:'tower'},
-  {id:'t6',x:30, y:250, k:'tower'},{id:'t7',x:182,y:250,k:'tower'},{id:'t8',x:340,y:250,k:'tower'},
-  {id:'t9',x:30, y:360, k:'tower'},{id:'t10',x:182,y:360,k:'tower'},{id:'t11',x:340,y:360,k:'tower'},
-  {id:'t12',x:120,y:135,k:'tower'},{id:'t13',x:245,y:135,k:'tower'},
-  {id:'t14',x:120,y:250,k:'tower'},{id:'t15',x:245,y:250,k:'tower'},
+  {id:'desert',name:'THE DUNES',desc:'Sun-scorched sands. A long winding trail bakes under the relentless desert heat.',
+   wps:[{x:290,y:-20},{x:290,y:80},{x:50,y:80},{x:50,y:200},{x:290,y:200},{x:290,y:320},{x:50,y:320},{x:50,y:440},{x:180,y:510}],
+   slots:[
+     {id:'p0',x:170,y:80,k:'path'},{id:'p1',x:170,y:200,k:'path'},{id:'p2',x:170,y:320,k:'path'},
+     {id:'t0',x:105,y:38,k:'tower'},{id:'t1',x:185,y:38,k:'tower'},{id:'t2',x:260,y:38,k:'tower'},
+     {id:'t3',x:95,y:140,k:'tower'},{id:'t4',x:175,y:140,k:'tower'},{id:'t5',x:340,y:140,k:'tower'},
+     {id:'t6',x:20,y:260,k:'tower'},{id:'t7',x:170,y:260,k:'tower'},{id:'t8',x:260,y:260,k:'tower'},
+     {id:'t9',x:95,y:382,k:'tower'},{id:'t10',x:175,y:382,k:'tower'},{id:'t11',x:340,y:382,k:'tower'},
+     {id:'t12',x:340,y:38,k:'tower'},{id:'t13',x:20,y:140,k:'tower'},
+     {id:'t14',x:340,y:260,k:'tower'},{id:'t15',x:20,y:382,k:'tower'},
+   ],
+   theme:{bg:'#1a1205',grid:'#261a08',pathOuter:'#3d2a10',pathMid:'#4a3318',pathInner:'#422e14',pathDash:'#5a3e20',
+          slotPath:'#3d2808',slotPathX:'#4a3210',slotTower:'#3d2a10',slotTowerI:'#4a3218',slotTowerF:'#261808',accent:'#c8902a'}},
+
+  {id:'beach',name:'SHORELINE',desc:'Sandy coast, ocean ahead. The enemy marches straight into the sea.',
+   wps:[{x:70,y:-20},{x:70,y:70},{x:290,y:70},{x:290,y:190},{x:70,y:190},{x:70,y:320},{x:290,y:320},{x:290,y:510}],
+   slots:[
+     {id:'p0',x:180,y:70,k:'path'},{id:'p1',x:180,y:190,k:'path'},{id:'p2',x:180,y:320,k:'path'},
+     {id:'t0',x:115,y:33,k:'tower'},{id:'t1',x:180,y:33,k:'tower'},{id:'t2',x:245,y:33,k:'tower'},
+     {id:'t3',x:30,y:130,k:'tower'},{id:'t4',x:180,y:130,k:'tower'},{id:'t5',x:340,y:130,k:'tower'},
+     {id:'t6',x:30,y:255,k:'tower'},{id:'t7',x:180,y:255,k:'tower'},{id:'t8',x:340,y:255,k:'tower'},
+     {id:'t9',x:30,y:420,k:'tower'},{id:'t10',x:130,y:420,k:'tower'},{id:'t11',x:215,y:420,k:'tower'},
+     {id:'t12',x:115,y:130,k:'tower'},{id:'t13',x:245,y:130,k:'tower'},
+     {id:'t14',x:115,y:255,k:'tower'},{id:'t15',x:245,y:255,k:'tower'},
+   ],
+   theme:{bg:'#0a1610',grid:'#102018',pathOuter:'#1e3c28',pathMid:'#224830',pathInner:'#1e4028',pathDash:'#2a5038',
+          slotPath:'#1a3c20',slotPathX:'#224a28',slotTower:'#1a3c20',slotTowerI:'#1e4828',slotTowerF:'#0e2214',accent:'#3fc880'},
+   exitEffect:'water',exitLabel:'OCEAN'},
+
+  {id:'volcanic',name:'CRATER RUN',desc:'Scorched rock and rivers of lava. One wrong step and you are ash.',
+   wps:[{x:60,y:-20},{x:60,y:90},{x:300,y:90},{x:300,y:195},{x:40,y:195},{x:40,y:315},{x:320,y:315},{x:320,y:430},{x:320,y:510}],
+   slots:[
+     {id:'p0',x:180,y:90,k:'path'},{id:'p1',x:170,y:195,k:'path'},{id:'p2',x:180,y:315,k:'path'},
+     {id:'t0',x:115,y:45,k:'tower'},{id:'t1',x:180,y:45,k:'tower'},{id:'t2',x:248,y:45,k:'tower'},
+     {id:'t3',x:25,y:145,k:'tower'},{id:'t4',x:175,y:145,k:'tower'},{id:'t5',x:345,y:145,k:'tower'},
+     {id:'t6',x:25,y:257,k:'tower'},{id:'t7',x:180,y:257,k:'tower'},{id:'t8',x:345,y:257,k:'tower'},
+     {id:'t9',x:25,y:375,k:'tower'},{id:'t10',x:175,y:375,k:'tower'},{id:'t11',x:345,y:375,k:'tower'},
+     {id:'t12',x:115,y:145,k:'tower'},{id:'t13',x:248,y:145,k:'tower'},
+     {id:'t14',x:115,y:257,k:'tower'},{id:'t15',x:248,y:257,k:'tower'},
+   ],
+   theme:{bg:'#0d0604',grid:'#1a0c08',pathOuter:'#3d1008',pathMid:'#4a1a0c',pathInner:'#401408',pathDash:'#6a2010',
+          slotPath:'#3d1008',slotPathX:'#501808',slotTower:'#3d1008',slotTowerI:'#4a1810',slotTowerF:'#200804',accent:'#ff6020'}},
+
+  {id:'city',name:'DOWNTOWN',desc:'Concrete canyons and neon signs. Enemies march through the city grid.',
+   wps:[{x:180,y:-20},{x:180,y:60},{x:50,y:60},{x:50,y:180},{x:300,y:180},{x:300,y:300},{x:50,y:300},{x:50,y:420},{x:290,y:420},{x:290,y:510}],
+   slots:[
+     {id:'p0',x:115,y:60,k:'path'},{id:'p1',x:175,y:180,k:'path'},{id:'p2',x:175,y:300,k:'path'},
+     {id:'t0',x:230,y:25,k:'tower'},{id:'t1',x:300,y:25,k:'tower'},{id:'t2',x:130,y:25,k:'tower'},
+     {id:'t3',x:130,y:120,k:'tower'},{id:'t4',x:215,y:120,k:'tower'},{id:'t5',x:340,y:120,k:'tower'},
+     {id:'t6',x:30,y:240,k:'tower'},{id:'t7',x:175,y:240,k:'tower'},{id:'t8',x:340,y:240,k:'tower'},
+     {id:'t9',x:130,y:360,k:'tower'},{id:'t10',x:215,y:360,k:'tower'},{id:'t11',x:340,y:360,k:'tower'},
+     {id:'t12',x:30,y:120,k:'tower'},{id:'t13',x:215,y:25,k:'tower'},
+     {id:'t14',x:30,y:360,k:'tower'},{id:'t15',x:130,y:455,k:'tower'},
+   ],
+   theme:{bg:'#0a0c10',grid:'#141820',pathOuter:'#1a1e28',pathMid:'#202430',pathInner:'#1c2030',pathDash:'#304060',
+          slotPath:'#1e2830',slotPathX:'#283040',slotTower:'#1e2830',slotTowerI:'#243040',slotTowerF:'#101420',accent:'#f0c020'}},
 ];
+
+const PHW=19;
+let PD,currentMapId='classic';
+function buildPathData(wps){
+  const segs=[];let cum=0;
+  for(let i=0;i<wps.length-1;i++){const dx=wps[i+1].x-wps[i].x,dy=wps[i+1].y-wps[i].y,l=Math.hypot(dx,dy);segs.push({x0:wps[i].x,y0:wps[i].y,x1:wps[i+1].x,y1:wps[i+1].y,l,cum});cum+=l;}
+  return{segs,total:cum};
+}
+function posAt(d){for(const s of PD.segs){if(d<=s.cum+s.l){const t=(d-s.cum)/s.l;return{x:s.x0+t*(s.x1-s.x0),y:s.y0+t*(s.y1-s.y0)};}}const l=PD.segs[PD.segs.length-1];return{x:l.x1,y:l.y1};}
 
 // BALLOON DEFINITIONS
 // hi/lo: gradient highlight/shadow; kn: knot color; downgrades: type to spawn on death or null
@@ -187,10 +261,13 @@ const SP={
     desc:'Stationary spinning blade — deals 2 damage to every balloon that crosses it, ignoring shields.'},
 };
 
-function init(){
+function init(mapId){
+  if(mapId)currentMapId=mapId;
+  const map=MAPS.find(m=>m.id===currentMapId);
+  PD=buildPathData(map.wps);
   gamePaused=false;
   G={money:750,lives:100,wave:0,phase:'prep',
-    slots:SLOTS.map(s=>({...s,tower:null})),
+    slots:map.slots.map(s=>({...s,tower:null})),
     bal:[],newBals:[],proj:[],expl:[],part:[],flt:[],lasers:[],
     spawnQ:[],spawnTimer:0,betweenTimer:0,
     escaped:0,popped:0};
@@ -485,32 +562,55 @@ function upd(dt){
 
 // DRAW
 function draw(){
+  if(!G)return;
+  const map=MAPS.find(m=>m.id===currentMapId);
+  const TH=map.theme;
   ctx.clearRect(0,0,W,H);
-  ctx.fillStyle='#060e18';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=TH.bg;ctx.fillRect(0,0,W,H);
+
+  // Water exit effect (beach map) — drawn before grid so everything renders on top
+  if(map.exitEffect==='water'){
+    const waterY=420;
+    const wg=ctx.createLinearGradient(0,waterY,0,H);
+    wg.addColorStop(0,'rgba(10,60,120,0)');wg.addColorStop(.4,'rgba(10,60,120,.45)');wg.addColorStop(1,'rgba(20,80,160,.7)');
+    ctx.fillStyle=wg;ctx.fillRect(0,waterY,W,H-waterY);
+    const t=Date.now()*.001;
+    ctx.strokeStyle='rgba(60,160,255,.18)';ctx.lineWidth=1;
+    for(let wy=waterY+15;wy<H;wy+=20){
+      ctx.beginPath();
+      for(let wx=0;wx<=W;wx+=4){const dy=Math.sin(wx*.04+t*1.5+wy*.1)*3;wx===0?ctx.moveTo(wx,wy+dy):ctx.lineTo(wx,wy+dy);}
+      ctx.stroke();
+    }
+    if(map.exitLabel){
+      ctx.save();ctx.globalAlpha=.35;ctx.fillStyle='#60b8ff';
+      ctx.font='bold 10px "Share Tech Mono"';ctx.textAlign='center';
+      ctx.fillText(map.exitLabel,W/2,H-8);ctx.restore();
+    }
+  }
 
   // Grid
-  ctx.strokeStyle='#0c1d2d';ctx.lineWidth=.7;
+  ctx.strokeStyle=TH.grid;ctx.lineWidth=.7;
   for(let x=0;x<W;x+=30){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
   for(let y=0;y<H;y+=30){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
 
   // Path layers
-  drawPathLayer('#0c1e30',PHW*2+8);
-  drawPathLayer('#0f2438',PHW*2);
-  drawPathLayer('#0e2234',PHW*2-6);
-  ctx.save();ctx.strokeStyle='#183448';ctx.lineWidth=1.5;ctx.setLineDash([6,10]);strokePath();ctx.setLineDash([]);ctx.restore();
+  drawPathLayer(TH.pathOuter,PHW*2+8);
+  drawPathLayer(TH.pathMid,PHW*2);
+  drawPathLayer(TH.pathInner,PHW*2-6);
+  ctx.save();ctx.strokeStyle=TH.pathDash;ctx.lineWidth=1.5;ctx.setLineDash([6,10]);strokePath();ctx.setLineDash([]);ctx.restore();
 
   // Slots
   for(const sl of G.slots){
     if(sl.tower&&!sl.tower.one_used)continue;
     if(sl.k==='path'){
-      ctx.strokeStyle='#1a4020';ctx.lineWidth=1.5;ctx.strokeRect(sl.x-13,sl.y-13,26,26);
-      ctx.strokeStyle='#254a28';ctx.lineWidth=.8;
+      ctx.strokeStyle=TH.slotPath;ctx.lineWidth=1.5;ctx.strokeRect(sl.x-13,sl.y-13,26,26);
+      ctx.strokeStyle=TH.slotPathX;ctx.lineWidth=.8;
       ctx.beginPath();ctx.moveTo(sl.x-8,sl.y);ctx.lineTo(sl.x+8,sl.y);ctx.stroke();
       ctx.beginPath();ctx.moveTo(sl.x,sl.y-8);ctx.lineTo(sl.x,sl.y+8);ctx.stroke();
     }else{
-      ctx.strokeStyle='#1a3450';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(sl.x,sl.y,13,0,Math.PI*2);ctx.stroke();
-      ctx.strokeStyle='#1f3d60';ctx.lineWidth=.8;ctx.beginPath();ctx.arc(sl.x,sl.y,8,0,Math.PI*2);ctx.stroke();
-      ctx.fillStyle='#0e2235';ctx.beginPath();ctx.arc(sl.x,sl.y,4,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle=TH.slotTower;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(sl.x,sl.y,13,0,Math.PI*2);ctx.stroke();
+      ctx.strokeStyle=TH.slotTowerI;ctx.lineWidth=.8;ctx.beginPath();ctx.arc(sl.x,sl.y,8,0,Math.PI*2);ctx.stroke();
+      ctx.fillStyle=TH.slotTowerF;ctx.beginPath();ctx.arc(sl.x,sl.y,4,0,Math.PI*2);ctx.fill();
     }
   }
 
@@ -658,7 +758,7 @@ function draw(){
 }
 
 function drawPathLayer(col,lw){ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.lineCap='round';ctx.lineJoin='round';strokePath();}
-function strokePath(){ctx.beginPath();ctx.moveTo(WPS[0].x,WPS[0].y);for(let i=1;i<WPS.length;i++)ctx.lineTo(WPS[i].x,WPS[i].y);ctx.stroke();}
+function strokePath(){const wps=MAPS.find(m=>m.id===currentMapId).wps;ctx.beginPath();ctx.moveTo(wps[0].x,wps[0].y);for(let i=1;i<wps.length;i++)ctx.lineTo(wps[i].x,wps[i].y);ctx.stroke();}
 function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.arcTo(x+w,y,x+w,y+r,r);ctx.lineTo(x+w,y+h-r);ctx.arcTo(x+w,y+h,x+w-r,y+h,r);ctx.lineTo(x+r,y+h);ctx.arcTo(x,y+h,x,y+h-r,r);ctx.lineTo(x,y+r);ctx.arcTo(x,y,x+r,y,r);ctx.closePath();}
 
 function drawSpike(x,y,t){
@@ -966,12 +1066,7 @@ document.getElementById('bw').addEventListener('click',()=>{
 });
 document.getElementById('ob').addEventListener('click',()=>{
   document.getElementById('ov').classList.remove('o');
-  init();hud();gameSpeed=1;
-  document.getElementById('ff').textContent='▶▶ 1×';
-  document.getElementById('ff').classList.remove('fast');
-  document.getElementById('sk').style.display='';
-  const bw=document.getElementById('bw');
-  bw.textContent='▶ START';bw.className='';bw.disabled=false;
+  showMapSelect();
 });
 
 function endGame(win){
@@ -989,9 +1084,37 @@ function endGame(win){
   ov.classList.add('o');
 }
 
+function showMapSelect(){
+  const cards=document.getElementById('ms-cards');
+  cards.innerHTML='';
+  for(const map of MAPS){
+    const card=document.createElement('div');card.className='mc';
+    const sw=document.createElement('div');sw.className='mc-sw';sw.style.background=map.theme.accent;
+    const info=document.createElement('div');info.className='mc-info';
+    const nm=document.createElement('div');nm.className='mc-name';nm.textContent=map.name;
+    const ds=document.createElement('div');ds.className='mc-desc';ds.textContent=map.desc;
+    info.append(nm,ds);card.append(sw,info);
+    card.addEventListener('click',()=>selectMap(map.id));
+    cards.appendChild(card);
+  }
+  document.getElementById('ms').classList.add('o');
+}
+
+function selectMap(mapId){
+  document.getElementById('ms').classList.remove('o');
+  init(mapId);hud();
+  gameSpeed=1;
+  document.getElementById('ff').textContent='▶▶ 1×';
+  document.getElementById('ff').classList.remove('fast');
+  document.getElementById('sk').style.display='';
+  const bw=document.getElementById('bw');
+  bw.textContent='▶ START';bw.className='';bw.disabled=false;
+}
+
 // MAIN LOOP
 function loop(ts){
   let dt=Math.min((ts-lastT)/1000,.07);lastT=ts;
+  if(!G){draw();requestAnimationFrame(loop);return;}
   dt*=gameSpeed;
   if(!bombPause&&!gamePaused)upd(dt);
   else{
@@ -1002,7 +1125,7 @@ function loop(ts){
   }
   draw();requestAnimationFrame(loop);
 }
-init();hud();
+showMapSelect();
 requestAnimationFrame(ts=>{lastT=ts;requestAnimationFrame(loop);});
 </script>
 </body>
