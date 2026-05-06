@@ -603,8 +603,9 @@ function draw(){
   for(const sl of G.slots){
     if(sl.tower&&!sl.tower.one_used)continue;
     if(sl.k==='path'){
-      ctx.strokeStyle=TH.slotPath;ctx.lineWidth=1.5;ctx.strokeRect(sl.x-13,sl.y-13,26,26);
-      ctx.strokeStyle=TH.slotPathX;ctx.lineWidth=.8;
+      ctx.fillStyle='rgba(0,0,0,0.28)';ctx.fillRect(sl.x-13,sl.y-13,26,26);
+      ctx.strokeStyle='rgba(255,255,255,0.5)';ctx.lineWidth=1.5;ctx.strokeRect(sl.x-13,sl.y-13,26,26);
+      ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=1;
       ctx.beginPath();ctx.moveTo(sl.x-8,sl.y);ctx.lineTo(sl.x+8,sl.y);ctx.stroke();
       ctx.beginPath();ctx.moveTo(sl.x,sl.y-8);ctx.lineTo(sl.x,sl.y+8);ctx.stroke();
     }else{
