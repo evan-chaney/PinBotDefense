@@ -182,7 +182,16 @@ const BALDEF={
   blue: {hp:1,spd:63,col:'#5ab4e8',hi:'#b0e8ff',lo:'#1878b8',kn:'#1670a8',rew:1,r:10,downgrades:null},
   red:  {hp:1,spd:63,col:'#e85a5a',hi:'#ffb0b0',lo:'#b82020',kn:'#a01010',rew:2,r:10,downgrades:'green'},
   green:{hp:1,spd:63,col:'#4de878',hi:'#b0ffc0',lo:'#18a838',kn:'#10a028',rew:2,r:10,downgrades:'blue'},
+  boss: {hp:1,spd:40,col:'#6e40c9',hi:'#b08cff',lo:'#3a1878',kn:'#2a1060',rew:20,r:22,downgrades:null},
 };
+const BOSS_WAVES=[10,20,30,40,50];
+const BOSS_TIERS=[
+  {hp:5, livesDrain:5, rew:25},
+  {hp:8, livesDrain:6, rew:40},
+  {hp:12,livesDrain:7, rew:60},
+  {hp:16,livesDrain:8, rew:80},
+  {hp:20,livesDrain:10,rew:100},
+];
 
 // TOWER DEFINITIONS
 const TD={
@@ -292,18 +301,29 @@ function buildQueue(wd){
 
 function startWave(){
   G.wave++;
-  G.spawnQ=buildQueue(WDEF[G.wave-1]);
-  G.spawnTimer=0.45;
-  G.phase='wave';
-  const n=G.spawnQ.length;
-  G.flt.push({x:W/2,y:H/2-20,txt:'WAVE '+G.wave,sub:n+' INCOMING',life:1.8,max:1.8,big:true});
+  const bi=BOSS_WAVES.indexOf(G.wave);
+  if(bi!==-1){
+    const bt=BOSS_TIERS[bi];
+    G.spawnQ=[{type:'boss',shield:false,hp:bt.hp,livesDrain:bt.livesDrain,rew:bt.rew}];
+    G.spawnTimer=0.45;G.phase='wave';
+    G.flt.push({x:W/2,y:H/2-20,txt:'BOSS WAVE '+G.wave,sub:'PREPARE FOR BATTLE',
+      life:1.8,max:1.8,big:true,col:'#ff4040'});
+  }else{
+    G.spawnQ=buildQueue(WDEF[G.wave-1]);
+    G.spawnTimer=0.45;G.phase='wave';
+    const n=G.spawnQ.length;
+    G.flt.push({x:W/2,y:H/2-20,txt:'WAVE '+G.wave,sub:n+' INCOMING',life:1.8,max:1.8,big:true});
+  }
   hud();
 }
 
-function mkBal(type,d,hasShield){
+function mkBal(type,d,hasShield,extras={}){
   const def=BALDEF[type];
-  return{id:eid++,type,hp:def.hp,shieldHp:hasShield?2:0,spd:def.spd,
-    d:d!==undefined?d:-20,r:def.r,dead:false};
+  return{id:eid++,type,hp:extras.hp||def.hp,shieldHp:hasShield?2:0,spd:def.spd,
+    d:d!==undefined?d:-20,r:def.r,dead:false,
+    livesDrain:extras.livesDrain||1,
+    maxHp:extras.hp||def.hp,
+    rew:extras.rew!==undefined?extras.rew:def.rew};
 }
 
 // Returns amount consumed from attacker's damage pool
@@ -320,6 +340,20 @@ function dmgBal(b,dmg){
   let spawnedId=null;
   if(b.hp<=0){
     b.dead=true;
+    if(b.type==='boss'){
+      G.money+=b.rew;G.popped++;
+      const p=posAt(b.d);
+      popPart(p,BALDEF.boss.col);
+      G.flt.push({x:p.x,y:p.y-14,txt:'+$'+b.rew,life:.8,max:.8,big:false});
+      const cnt=3+Math.floor(Math.random()*2);
+      const types=['blue','red','green'];
+      for(let i=0;i<cnt;i++){
+        const nb=mkBal(types[Math.floor(Math.random()*3)],b.d,false);
+        G.newBals.push(nb);
+      }
+      hud();
+      return{consumed,spawnedId:null};
+    }
     const def=BALDEF[b.type];
     if(def.downgrades){
       G.money+=def.rew;
@@ -408,7 +442,8 @@ function upd(dt){
   G.spawnTimer-=dt;
   if(G.spawnTimer<=0&&G.spawnQ.length>0){
     const e=G.spawnQ.shift();
-    G.bal.push(mkBal(e.type,-20,e.shield));
+    const extras=e.type==='boss'?{hp:e.hp,livesDrain:e.livesDrain,rew:e.rew}:{};
+    G.bal.push(mkBal(e.type,-20,e.shield,extras));
     G.spawnTimer=G.spawnQ.length?0.52:0;
   }
 
@@ -417,8 +452,10 @@ function upd(dt){
     if(b.dead)continue;
     b.d+=b.spd*dt;
     if(b.d>=PD.total){
-      b.dead=true;G.lives--;G.escaped++;
-      G.flt.push({x:W/2,y:H-80,txt:'BREACH! -1 LIFE',life:.9,max:.9,big:false,col:'#f85149'});
+      const drain=b.livesDrain||1;
+      b.dead=true;G.lives=Math.max(0,G.lives-drain);G.escaped++;
+      const txt=drain>1?'BOSS ESCAPED! -'+drain+' LIVES':'BREACH! -1 LIFE';
+      G.flt.push({x:W/2,y:H-80,txt,life:.9,max:.9,big:false,col:'#f85149'});
       if(G.lives<=0){endGame(false);return;}
       hud();
     }
@@ -455,6 +492,7 @@ function upd(dt){
       t.cdt=1.0;
       const inR=G.bal.filter(b=>!b.dead).filter(b=>{const p=posAt(b.d);return Math.hypot(p.x-sl.x,p.y-sl.y)<28;});
       for(const b of inR){
+        if(b.type==='boss'){dmgBal(b,2);continue;}
         const pos=posAt(b.d);
         b.dead=true;
         const def=BALDEF[b.type];
@@ -531,6 +569,7 @@ function upd(dt){
         if(b.dead)continue;
         const bp=posAt(b.d);
         if(Math.abs(bp.x-lz.x)<12){
+          if(b.type==='boss'){dmgBal(b,8);continue;}
           // Fully destroy — no downgrade
           b.dead=true;G.money+=BALDEF[b.type].rew;G.popped++;
           popPart(bp,BALDEF[b.type].col);
@@ -551,8 +590,14 @@ function upd(dt){
   if(G.spawnQ.length===0&&G.bal.length===0&&G.proj.length===0&&G.expl.length===0){
     if(G.wave>=50){setTimeout(()=>endGame(true),700);}
     else{
-      G.phase='between';G.betweenTimer=1.5;
-      G.flt.push({x:W/2,y:H/2,txt:'WAVE '+(G.wave+1)+' INCOMING',sub:'PREPARE DEFENSES',life:1.4,max:1.4,big:true});
+      const nextWave=G.wave+1;
+      const isBoss=BOSS_WAVES.includes(nextWave);
+      G.phase='between';G.betweenTimer=isBoss?3.0:1.5;
+      G.flt.push({x:W/2,y:H/2,
+        txt:isBoss?'! BOSS INCOMING !':'WAVE '+nextWave+' INCOMING',
+        sub:isBoss?'PREPARE FOR BATTLE':'PREPARE DEFENSES',
+        life:isBoss?2.8:1.4,max:isBoss?2.8:1.4,big:true,
+        col:isBoss?'#ff4040':undefined});
       // Keep bw in PAUSE state for between-wave period
       const bw=document.getElementById('bw');
       if(!gamePaused){bw.textContent='⏸ PAUSE';bw.className='pause';bw.disabled=false;}
@@ -702,6 +747,24 @@ function draw(){
     ctx.strokeStyle=def.kn;ctx.lineWidth=.9;
     ctx.beginPath();ctx.moveTo(pos.x,pos.y+b.r+2);
     ctx.quadraticCurveTo(pos.x+2,pos.y+b.r+6,pos.x+1,pos.y+b.r+9);ctx.stroke();
+    // boss: pulsing aura + HP bar
+    if(b.type==='boss'){
+      const t=Date.now()*.001;
+      ctx.save();
+      ctx.globalAlpha=.15+Math.abs(Math.sin(t*3))*.1;
+      ctx.strokeStyle='#9040ff';ctx.lineWidth=4;
+      ctx.beginPath();ctx.arc(pos.x,pos.y,b.r*(1+Math.sin(t*3)*.07)+5,0,Math.PI*2);ctx.stroke();
+      ctx.restore();
+      const bw=44,bh=5,bx=pos.x-22,by=pos.y-b.r-13;
+      ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(bx,by,bw,bh);
+      const pct=b.hp/b.maxHp;
+      ctx.fillStyle=pct>.5?'#3fb950':pct>.25?'#e3b341':'#f85149';
+      ctx.fillRect(bx,by,bw*pct,bh);
+      ctx.strokeStyle='rgba(255,255,255,.25)';ctx.lineWidth=1;ctx.strokeRect(bx,by,bw,bh);
+      ctx.save();ctx.fillStyle='#fff';ctx.font='bold 7px "Share Tech Mono"';
+      ctx.textAlign='center';ctx.globalAlpha=.8;
+      ctx.fillText(b.hp+'/'+b.maxHp,pos.x,by-2);ctx.restore();
+    }
   }
 
   // Satellite lasers
@@ -740,7 +803,7 @@ function draw(){
   for(const f of G.flt){
     const a=Math.min(1,f.life/f.max*2.2);ctx.globalAlpha=Math.max(0,a);
     if(f.big){
-      ctx.fillStyle='#e6b800';ctx.font='bold 15px "Share Tech Mono"';ctx.textAlign='center';ctx.fillText(f.txt,f.x,f.y);
+      ctx.fillStyle=f.col||'#e6b800';ctx.font='bold 15px "Share Tech Mono"';ctx.textAlign='center';ctx.fillText(f.txt,f.x,f.y);
       if(f.sub){ctx.font='9px "Share Tech Mono"';ctx.fillStyle='#3a7090';ctx.fillText(f.sub,f.x,f.y+16);}
     }else{
       ctx.fillStyle=f.col||'#3fb950';ctx.font='bold 11px "Share Tech Mono"';ctx.textAlign='center';ctx.fillText(f.txt,f.x,f.y);
@@ -751,9 +814,11 @@ function draw(){
   // Between-wave timer
   if(G.phase==='between'&&G.betweenTimer>0){
     const secs=Math.ceil(G.betweenTimer);
-    ctx.save();ctx.globalAlpha=.6;ctx.fillStyle='#58a6ff';
+    const nextIsBoss=BOSS_WAVES.includes(G.wave+1);
+    ctx.save();ctx.globalAlpha=.6;
+    ctx.fillStyle=nextIsBoss?'#ff4040':'#58a6ff';
     ctx.font='bold 10px "Share Tech Mono"';ctx.textAlign='center';
-    ctx.fillText('NEXT WAVE IN '+secs+'...',W/2,H-18);
+    ctx.fillText((nextIsBoss?'BOSS IN ':'NEXT WAVE IN ')+secs+'...',W/2,H-18);
     ctx.globalAlpha=1;ctx.restore();
   }
 }
