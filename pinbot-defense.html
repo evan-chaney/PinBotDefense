@@ -64,6 +64,17 @@ body{display:flex;justify-content:center;align-items:center;font-family:'Share T
 .mc-info{flex:1;}
 .mc-name{font-size:13px;color:#c8d8e8;font-weight:bold;letter-spacing:1px;margin-bottom:3px;}
 .mc-desc{font-size:10px;color:#2a5070;line-height:1.4;}
+#rs{display:none;position:fixed;inset:0;z-index:120;background:rgba(4,8,14,.97);flex-direction:column;justify-content:center;align-items:center;padding:20px 16px;gap:6px;}
+#rs.o{display:flex;}
+#rs-title{font-size:18px;font-weight:bold;color:#e6b800;letter-spacing:4px;text-align:center;margin-bottom:2px;}
+#rs-sub{font-size:9px;color:#3a5a1a;text-transform:uppercase;letter-spacing:2.5px;margin-bottom:12px;}
+#rs-info{background:#060e18;border:1px solid #162d47;border-radius:6px;padding:14px 18px;width:100%;max-width:320px;font-size:12px;color:#3a6080;line-height:2.2;text-align:center;margin-bottom:14px;}
+#rs-info strong{color:#c8d8e8;}
+#rs-btns{display:flex;flex-direction:column;gap:8px;width:100%;max-width:320px;}
+#rs-yes{background:#08201a;border:1.5px solid #2a8040;color:#3fb950;font-family:inherit;font-size:13px;font-weight:bold;padding:12px 20px;cursor:pointer;text-transform:uppercase;letter-spacing:1px;border-radius:3px;width:100%;}
+#rs-yes:hover{background:#1e6030;color:#fff;}
+#rs-no{background:#060e18;border:1px solid #162d47;color:#3a6080;font-family:inherit;font-size:12px;padding:10px 20px;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;border-radius:3px;width:100%;}
+#rs-no:hover{background:#0b1a2e;color:#58a6ff;border-color:#2a5080;}
 </style>
 </head>
 <body>
@@ -82,6 +93,7 @@ body{display:flex;justify-content:center;align-items:center;font-family:'Share T
 <div id="modal"><div id="mbox"><div id="mt">SELECT</div><div id="mo"></div></div></div>
 <div id="ov"><div id="ot">—</div><div id="os"></div><button id="ob">RETRY</button></div>
 <div id="ms"><div id="ms-title">SELECT MAP</div><div id="ms-sub">Choose your battlefield</div><div id="ms-cards"></div></div>
+<div id="rs"><div id="rs-title">RESUME GAME?</div><div id="rs-sub">You have an unfinished session</div><div id="rs-info"></div><div id="rs-btns"><button id="rs-yes">▶ RESUME</button><button id="rs-no">⊕ NEW GAME</button></div></div>
 <script>
 const CV=document.getElementById('gc'),ctx=CV.getContext('2d');
 const W=360,H=490;let SC=1;
@@ -200,7 +212,17 @@ const TD={
   sling:{name:'PIN SLINGSHOT',cost:100,k:'tower',range:120,
     up:[{id:'sharp',name:'SHARPER PINS',cost:150,desc:'2 damage — pierces through balloons'}]},
   bomb:{name:'STACK OF BOMBS',cost:200,k:'tower',one:true,
-    up:[{id:'big',name:'BIGGER BOMB',cost:200,desc:'Blast radius 160 — obliterates shields'}]}
+    up:[{id:'big',name:'BIGGER BOMB',cost:200,desc:'Blast radius 160 — obliterates shields'}]},
+  magnet:{name:'MAGNET TOWER',cost:175,k:'tower',
+    up:[
+      {id:'stop',   name:'MAGNETIC STOP', cost:175,desc:'Fully halts balloons in range for 2s'},
+      {id:'reverse',name:'POLARITY FLIP', cost:200,desc:'Briefly reverses balloon direction, then slows'}
+    ]},
+  tax:{name:'TOLL BOOTH',cost:125,k:'tower',
+    up:[
+      {id:'heavy',name:'HEAVY TOLL',  cost:125,desc:'Earn $3 per balloon instead of $1'},
+      {id:'boss', name:'BOSS TARIFF', cost:175,desc:'Also earns $5 from boss balloons'}
+    ]}
 };
 
 // WAVE DEFINITIONS (50 waves)
@@ -365,7 +387,7 @@ function init(mapId){
   gamePaused=false;
   G={money:750,lives:100,wave:0,phase:'prep',
     slots:map.slots.map(s=>({...s,tower:null})),
-    bal:[],newBals:[],proj:[],expl:[],part:[],flt:[],lasers:[],
+    bal:[],newBals:[],proj:[],expl:[],part:[],flt:[],lasers:[],mwaves:[],
     spawnQ:[],spawnTimer:0,betweenTimer:0,
     escaped:0,popped:0};
 }
@@ -541,7 +563,9 @@ function upd(dt){
   // Move balloons
   for(const b of G.bal){
     if(b.dead)continue;
-    b.d+=b.spd*dt;
+    b.d+=b.spd*(b.spdMult!==undefined?b.spdMult:1)*dt;
+    if(b.d<0)b.d=0;
+    if(b.spdMult_t!==undefined){b.spdMult_t-=dt;if(b.spdMult_t<=0){delete b.spdMult;delete b.spdMult_t;}}
     if(b.d>=PD.total){
       const drain=b.livesDrain||1;
       b.dead=true;G.lives=Math.max(0,G.lives-drain);G.escaped++;
@@ -617,6 +641,41 @@ function upd(dt){
         }
         for(let i=0;i<5;i++)G.part.push({x:sl.x,y:sl.y,vx:(Math.random()-.5)*200,vy:(Math.random()-.5)*200,life:.3,max:.3,col:i<2?'#ffee44':'#ff8800',r:Math.random()*3+1.5});
       }
+    }else if(t.kind==='magnet'){
+      const rng=t.ups.stop||t.ups.reverse?115:100;
+      if(t.cdt>0)continue;
+      const inR=G.bal.filter(b=>!b.dead).filter(b=>{const p=posAt(b.d);return Math.hypot(p.x-sl.x,p.y-sl.y)<rng;});
+      if(!inR.length)continue;
+      let mult,dur;
+      if(t.ups.reverse){mult=-0.25;dur=1.0;}
+      else if(t.ups.stop){mult=0;dur=2.0;}
+      else{mult=0.3;dur=1.5;}
+      for(const b of inR){
+        const curMult=b.spdMult!==undefined?b.spdMult:1;
+        if(mult<=curMult){b.spdMult=mult;b.spdMult_t=dur;}
+      }
+      G.mwaves.push({x:sl.x,y:sl.y,r:8,maxR:rng,life:0.55,maxLife:0.55,
+        col:t.ups.reverse?'#ff60c8':t.ups.stop?'#9040ff':'#00d8ff'});
+      t.active=true;
+      t.cdt=3.0;
+      setTimeout(()=>{if(t)t.active=false;},400);
+    }else if(t.kind==='tax'){
+      const rng=90;
+      let fired=false;
+      for(const b of G.bal){
+        if(b.dead)continue;
+        if(b.type==='boss'&&!t.ups.boss)continue;
+        if(t.taxed.has(b.id))continue;
+        const p=posAt(b.d);
+        if(Math.hypot(p.x-sl.x,p.y-sl.y)<rng){
+          const amount=b.type==='boss'?5:t.ups.heavy?3:1;
+          t.taxed.add(b.id);
+          G.money+=amount;hud();
+          G.flt.push({x:p.x+((Math.random()-.5)*10),y:p.y-14,txt:'+$'+amount,life:.8,max:.8,big:false});
+          fired=true;
+        }
+      }
+      if(fired){t.active=true;setTimeout(()=>{if(t)t.active=false;},300);}
     }
   }
 
@@ -652,6 +711,9 @@ function upd(dt){
     }
   }
   G.expl=G.expl.filter(e=>!e.dead);
+  // Magnetic waves
+  for(const mw of G.mwaves){mw.r+=mw.maxR/mw.maxLife*dt;mw.life-=dt;}
+  G.mwaves=G.mwaves.filter(mw=>mw.life>0);
 
   // Satellite lasers
   for(const lz of G.lasers){
@@ -680,12 +742,12 @@ function upd(dt){
   if(G.newBals.length){G.bal.push(...G.newBals);G.newBals=[];}
 
   // Check wave complete
-  if(G.spawnQ.length===0&&G.bal.length===0&&G.proj.length===0&&G.expl.length===0){
+  if(G.spawnQ.length===0&&G.bal.length===0&&G.proj.length===0&&G.expl.length===0&&G.mwaves.length===0){
     if(G.wave>=50){SFX.gameWin();setTimeout(()=>endGame(true),700);}
     else{
       const nextWave=G.wave+1;
       const isBoss=BOSS_WAVES.includes(nextWave);
-      G.phase='between';G.betweenTimer=isBoss?3.0:1.5;
+      G.phase='between';G.betweenTimer=isBoss?3.0:1.5;saveGame();
       G.flt.push({x:W/2,y:H/2,
         txt:isBoss?'! BOSS INCOMING !':'WAVE '+nextWave+' INCOMING',
         sub:isBoss?'PREPARE FOR BATTLE':'PREPARE DEFENSES',
@@ -763,6 +825,8 @@ function draw(){
     else if(t.spkind==='reloader')drawReloader(sl.x,sl.y,t);
     else if(t.spkind==='satlas')drawSatLas(sl.x,sl.y,t);
     else if(t.spkind==='sawblade')drawSawBlade(sl.x,sl.y,t);
+    else if(t.kind==='magnet')drawMagnet(sl.x,sl.y,t);
+    else if(t.kind==='tax')drawTax(sl.x,sl.y,t);
     ctx.restore();
   }
 
@@ -775,6 +839,18 @@ function draw(){
     g.addColorStop(1,'rgba(255,50,0,0)');
     ctx.fillStyle=g;ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle=`rgba(255,200,50,${a*.9})`;ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,Math.PI*2);ctx.stroke();
+  }
+
+  // Magnetic waves
+  for(const mw of G.mwaves){
+    const a=Math.max(0,mw.life/mw.maxLife);
+    ctx.save();
+    ctx.globalAlpha=a*0.65;
+    ctx.strokeStyle=mw.col;ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.arc(mw.x,mw.y,mw.r,0,Math.PI*2);ctx.stroke();
+    ctx.globalAlpha=a*0.2;ctx.lineWidth=8;
+    ctx.beginPath();ctx.arc(mw.x,mw.y,mw.r,0,Math.PI*2);ctx.stroke();
+    ctx.restore();
   }
 
   // Particles
@@ -949,6 +1025,63 @@ function drawSling(x,y,t){
   ctx.fillStyle='rgba(255,255,255,.6)';ctx.beginPath();ctx.arc(x+1,y+2,1,0,Math.PI*2);ctx.fill();
 }
 
+function drawMagnet(x,y,t){
+  const pulse=Math.sin(Date.now()*.002);
+  const act=t.active;
+  const ringCol=t.ups.reverse?'#ff60c8':t.ups.stop?'#9040ff':'#00d8ff';
+  // Base circle
+  ctx.fillStyle='#0e1e2e';ctx.strokeStyle=ringCol;ctx.lineWidth=act?2.5:1.8;
+  ctx.beginPath();ctx.arc(x,y,16,0,Math.PI*2);ctx.fill();ctx.stroke();
+  ctx.strokeStyle=t.ups.reverse?'#a02090':t.ups.stop?'#5020a0':'#007898';
+  ctx.lineWidth=1;ctx.beginPath();ctx.arc(x,y,11,0,Math.PI*2);ctx.stroke();
+  // N pole arm (red, left arc)
+  ctx.strokeStyle=act?'#ff6060':'#c03030';ctx.lineWidth=3;ctx.lineCap='round';
+  ctx.beginPath();ctx.arc(x,y,7,Math.PI*.75,Math.PI*1.75,false);ctx.stroke();
+  ctx.fillStyle=act?'#ff9090':'#e05050';
+  ctx.beginPath();ctx.arc(x-7*Math.cos(Math.PI*.25),y-7*Math.sin(Math.PI*.25),2.5,0,Math.PI*2);ctx.fill();
+  // S pole arm (blue, right arc)
+  ctx.strokeStyle=act?'#6090ff':'#3060c0';ctx.lineWidth=3;ctx.lineCap='round';
+  ctx.beginPath();ctx.arc(x,y,7,-Math.PI*.25,Math.PI*.75,false);ctx.stroke();
+  ctx.fillStyle=act?'#90b8ff':'#5080e0';
+  ctx.beginPath();ctx.arc(x+7*Math.cos(Math.PI*.25),y-7*Math.sin(Math.PI*.25),2.5,0,Math.PI*2);ctx.fill();
+  // Center glow
+  ctx.fillStyle=ringCol;ctx.globalAlpha=act?.55:.18+pulse*.08;
+  ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.fill();
+  ctx.globalAlpha=1;
+  if(act){
+    ctx.fillStyle=ringCol;ctx.globalAlpha=.22;
+    ctx.beginPath();ctx.arc(x,y,16,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;
+  }
+  // Faint range ring
+  const rng=t.ups.stop||t.ups.reverse?115:100;
+  ctx.strokeStyle=ringCol;ctx.lineWidth=1;ctx.globalAlpha=.09;ctx.setLineDash([3,6]);
+  ctx.beginPath();ctx.arc(x,y,rng,0,Math.PI*2);ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+}
+
+function drawTax(x,y,t){
+  const pulse=Math.sin(Date.now()*.0025);
+  const act=t.active;
+  // Base circle
+  ctx.fillStyle='#1a1500';ctx.strokeStyle=act?'#ffd700':'#b8960a';ctx.lineWidth=act?2.5:1.8;
+  ctx.beginPath();ctx.arc(x,y,16,0,Math.PI*2);ctx.fill();ctx.stroke();
+  ctx.strokeStyle='#7a6000';ctx.lineWidth=1;ctx.beginPath();ctx.arc(x,y,11,0,Math.PI*2);ctx.stroke();
+  // Coin
+  ctx.fillStyle=act?'#ffd700':'#c8a000';ctx.globalAlpha=act?1:.8+pulse*.12;
+  ctx.beginPath();ctx.arc(x,y,7,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+  // $ symbol
+  ctx.fillStyle=act?'#ffffff':'#2a1a00';ctx.font='bold 9px "Share Tech Mono"';
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('$',x,y+.5);
+  ctx.textAlign='left';ctx.textBaseline='alphabetic';
+  // Active flash
+  if(act){ctx.fillStyle='#ffd700';ctx.globalAlpha=.2;ctx.beginPath();ctx.arc(x,y,16,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
+  // Range ring
+  ctx.strokeStyle='#b8960a';ctx.lineWidth=1;ctx.globalAlpha=.09;ctx.setLineDash([3,6]);
+  ctx.beginPath();ctx.arc(x,y,90,0,Math.PI*2);ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+}
+
 function drawBomb(x,y,t){
   const armed=t.fuse>0&&!t.one_used;
   const fusing=armed&&t.cdt<=3&&t.cdt>0;
@@ -1080,7 +1213,7 @@ function slotClick(sl){
       const sv=Math.floor(SP.reloader.cost*.5);
       openModal('BOMB RELOADER',[
         {label:'ℹ  RELOADS REMAINING',desc:left+' detonations left on linked bomb',disabled:true},
-        {label:'🗑  SELL',earn:sv,danger:true,desc:'Recover $'+sv,action:()=>{G.money+=sv;sl.tower=null;hud();}},
+        {label:'🗑  SELL',earn:sv,danger:true,desc:'Recover $'+sv,action:()=>{G.money+=sv;sl.tower=null;hud();saveGame();}},
       ]);return;
     }
     // Superpower: Satellite Laser
@@ -1089,7 +1222,7 @@ function slotClick(sl){
       const sv=Math.floor(SP.satlas.cost*.5);
       openModal('SATELLITE LASER',[
         {label:'🛰  FIRE LASER',desc:'Satellite sweeps the map — destroys all balloons in its path',action:()=>fireSatLas(sl)},
-        {label:'🗑  SELL',earn:sv,danger:true,desc:'Recover $'+sv,action:()=>{G.money+=sv;sl.tower=null;hud();}},
+        {label:'🗑  SELL',earn:sv,danger:true,desc:'Recover $'+sv,action:()=>{G.money+=sv;sl.tower=null;hud();saveGame();}},
       ]);return;
     }
     // Superpower: Saw Blade
@@ -1097,7 +1230,7 @@ function slotClick(sl){
       const sv=Math.floor(SP.sawblade.cost*.5);
       openModal('SAW BLADE',[
         {label:'⚙  SPINNING — ACTIVE',desc:'Deals 2 damage to every balloon that crosses it. Shields ignored.',disabled:true},
-        {label:'🗑  SELL',earn:sv,danger:true,desc:'Recover $'+sv,action:()=>{G.money+=sv;sl.tower=null;hud();}},
+        {label:'🗑  SELL',earn:sv,danger:true,desc:'Recover $'+sv,action:()=>{G.money+=sv;sl.tower=null;hud();saveGame();}},
       ]);return;
     }
     const key=t.kind;const items=[];
@@ -1105,18 +1238,18 @@ function slotClick(sl){
     if(key==='bomb'&&t.fuse>0&&t.cdt>0)items.push({label:'⏱  CHANGE COUNTDOWN',desc:'Reopen timer (game pauses)',action:()=>openBombTimer(sl)});
     if(key==='bomb'&&t.reloadUses>0)items.push({label:'ℹ  RELOADS: '+t.reloadUses+' remaining',disabled:true});
     for(const u of TD[key].up||[]){
-      if(!t.ups[u.id])items.push({label:'⬆  '+u.name,desc:u.desc,cost:u.cost,disabled:G.money<u.cost,action:()=>{G.money-=u.cost;t.ups[u.id]=true;SFX.towerUpgrade();hud();}});
+      if(!t.ups[u.id])items.push({label:'⬆  '+u.name,desc:u.desc,cost:u.cost,disabled:G.money<u.cost,action:()=>{G.money-=u.cost;t.ups[u.id]=true;SFX.towerUpgrade();hud();saveGame();}});
       else items.push({label:'✓  '+u.name+' (INSTALLED)',disabled:true});
     }
     const totalSpent=t.base+Object.keys(t.ups).filter(k=>t.ups[k]).reduce((a,k)=>{
       const def=(TD[key].up||[]).find(u=>u.id===k);return a+(def?def.cost:0);},0);
     const sv=Math.floor(totalSpent*.5);
-    items.push({label:'🗑  SELL TOWER',earn:sv,danger:true,desc:'Recover $'+sv+' (50% of $'+totalSpent+')',action:()=>{G.money+=sv;sl.tower=null;hud();}});
-    const names={spike:'SPIKE TRAP',sling:'PIN SLINGSHOT',bomb:'STACK OF BOMBS'};
+    items.push({label:'🗑  SELL TOWER',earn:sv,danger:true,desc:'Recover $'+sv+' (50% of $'+totalSpent+')',action:()=>{G.money+=sv;sl.tower=null;hud();saveGame();}});
+    const names={spike:'SPIKE TRAP',sling:'PIN SLINGSHOT',bomb:'STACK OF BOMBS',magnet:'MAGNET TOWER',tax:'TOLL BOOTH'};
     openModal(names[key],items);
   }else{
-    const avail=sl.k==='path'?[{key:'spike'}]:[{key:'sling'},{key:'bomb'}];
-    const descs={spike:'Pops balloons walking over it.',sling:'Shoots pins down the path.',bomb:'One-use explosive. Set timer after placing.'};
+    const avail=sl.k==='path'?[{key:'spike'}]:[{key:'sling'},{key:'bomb'},{key:'magnet'},{key:'tax'}];
+    const descs={spike:'Pops balloons walking over it.',sling:'Shoots pins down the path.',bomb:'One-use explosive. Set timer after placing.',magnet:'Pulses a wave that slows nearby balloons.',tax:'Earns money from every balloon that enters range.'};
     const items=avail.map(({key})=>({
       label:TD[key].name,desc:descs[key],cost:TD[key].cost,disabled:G.money<TD[key].cost,
       action:()=>placeTower(sl,key)
@@ -1153,7 +1286,7 @@ function placeSP(sl,spkind){
     }
   }
   if(spkind==='sawblade'){t.cdt=0;}
-  sl.tower=t;SFX.towerBuild();hud();
+  sl.tower=t;SFX.towerBuild();hud();saveGame();
 }
 
 function fireSatLas(sl){
@@ -1177,7 +1310,8 @@ function placeTower(sl,key){
   const t={kind:key,base:TD[key].cost,ups:{},cdt:0,active:false};
   if(key==='sling')t.range=TD.sling.range;
   if(key==='bomb')t.fuse=0;
-  sl.tower=t;SFX.towerBuild();hud();
+  if(key==='tax')t.taxed=new Set();
+  sl.tower=t;SFX.towerBuild();hud();saveGame();
 }
 
 // INPUT
@@ -1230,7 +1364,7 @@ document.getElementById('ob').addEventListener('click',()=>{
 });
 
 function endGame(win){
-  G.phase='done';bombPause=false;
+  G.phase='done';bombPause=false;clearSavedGame();
   const ov=document.getElementById('ov');
   ov.querySelector('#ot').textContent=win?'MISSION\nCOMPLETE':'SYSTEMS\nFAILED';
   ov.querySelector('#ot').style.color=win?'#3fb950':'#f85149';
@@ -1271,6 +1405,87 @@ function selectMap(mapId){
   bw.textContent='▶ START';bw.className='';bw.disabled=false;
 }
 
+// SAVE / LOAD
+const SAVE_KEY='pinbotdefense_save';
+function saveGame(){
+  if(!G||G.wave<1||G.phase==='done')return;
+  try{
+    const slots=G.slots.map(s=>{
+      if(!s.tower)return{tower:null};
+      const t=s.tower;
+      const td={
+        kind:t.kind||null,spkind:t.spkind||null,
+        ups:{...t.ups},base:t.base,
+        active:t.active,range:t.range,
+        cdt:t.cdt,fuse:t.fuse,
+        reloadsLeft:t.reloadsLeft,reloadUses:t.reloadUses,
+        used:t.used,one_used:t.one_used,
+      };
+      if(t.linkedBomb)td.linkedBombIdx=G.slots.indexOf(t.linkedBomb);
+      return{tower:td};
+    });
+    localStorage.setItem(SAVE_KEY,JSON.stringify({v:1,mapId:currentMapId,money:G.money,lives:G.lives,wave:G.wave,popped:G.popped,escaped:G.escaped,slots}));
+  }catch(e){}
+}
+function clearSavedGame(){localStorage.removeItem(SAVE_KEY);}
+function loadSavedGame(){
+  const raw=localStorage.getItem(SAVE_KEY);
+  if(!raw)return false;
+  try{
+    const sv=JSON.parse(raw);
+    if(!sv||sv.v!==1)return false;
+    init(sv.mapId);
+    G.money=sv.money;G.lives=sv.lives;G.wave=sv.wave;
+    G.popped=sv.popped||0;G.escaped=sv.escaped||0;
+    G.phase='prep';
+    for(let i=0;i<sv.slots.length&&i<G.slots.length;i++){
+      const sd=sv.slots[i];
+      if(sd&&sd.tower)G.slots[i].tower={...sd.tower};
+    }
+    for(let i=0;i<sv.slots.length&&i<G.slots.length;i++){
+      const sd=sv.slots[i];
+      if(sd&&sd.tower&&sd.tower.linkedBombIdx!=null){
+        const idx=sd.tower.linkedBombIdx;
+        if(idx>=0&&idx<G.slots.length)G.slots[i].tower.linkedBomb=G.slots[idx];
+        delete G.slots[i].tower.linkedBombIdx;
+      }
+    }
+    hud();
+    gameSpeed=1;
+    document.getElementById('ff').textContent='▶▶ 1×';
+    document.getElementById('ff').classList.remove('fast');
+    document.getElementById('sk').style.display='';
+    const bw=document.getElementById('bw');
+    bw.textContent='▶ START';bw.className='';bw.disabled=false;
+    return true;
+  }catch(e){clearSavedGame();return false;}
+}
+function showResumePrompt(){
+  const raw=localStorage.getItem(SAVE_KEY);
+  if(!raw)return showMapSelect();
+  try{
+    const sv=JSON.parse(raw);
+    if(!sv||sv.v!==1){clearSavedGame();return showMapSelect();}
+    const map=MAPS.find(m=>m.id===sv.mapId);
+    const mapName=map?map.name:sv.mapId;
+    document.getElementById('rs-info').innerHTML=
+      '<strong>MAP</strong>  '+mapName+'<br>'+
+      '<strong>WAVE</strong>  '+sv.wave+' / 50<br>'+
+      '<strong>LIVES</strong>  '+sv.lives+'<br>'+
+      '<strong>FUNDS</strong>  $'+sv.money;
+    document.getElementById('rs').classList.add('o');
+  }catch(e){clearSavedGame();showMapSelect();}
+}
+document.getElementById('rs-yes').addEventListener('click',()=>{
+  document.getElementById('rs').classList.remove('o');
+  if(!loadSavedGame())showMapSelect();
+});
+document.getElementById('rs-no').addEventListener('click',()=>{
+  clearSavedGame();
+  document.getElementById('rs').classList.remove('o');
+  showMapSelect();
+});
+
 // MAIN LOOP
 function loop(ts){
   let dt=Math.min((ts-lastT)/1000,.07);lastT=ts;
@@ -1285,7 +1500,7 @@ function loop(ts){
   }
   draw();requestAnimationFrame(loop);
 }
-showMapSelect();
+if(localStorage.getItem(SAVE_KEY))showResumePrompt();else showMapSelect();
 requestAnimationFrame(ts=>{lastT=ts;requestAnimationFrame(loop);});
 </script>
 </body>
