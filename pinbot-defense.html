@@ -282,6 +282,94 @@ const WDEF=[
 
 let G,lastT=0,bombPause=false,eid=0,gameSpeed=1,gamePaused=false;
 
+// ─── AUDIO ───────────────────────────────────────────────────────────────────
+const SFX = (() => {
+  let AC = null, masterGain = null;
+  let activeCount = 0;
+  const MAX_CONCURRENT = 12;
+  const cooldowns = {};
+  const cooldownTimes = {
+    pinFire:0.06, balloonPop:0.04, sawHit:0.08, shieldBreak:0.07,
+    spikeHit:0.10, bombBoom:0, laser:0, escape:0.25,
+    waveStart:0, bossWave:0, gameWin:0, gameOver:0,
+    towerBuild:0, towerUpgrade:0, downgrade:0.05,
+  };
+
+  function init() {
+    if (AC) return true;
+    try {
+      AC = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = AC.createGain();
+      masterGain.gain.value = 0.55;
+      masterGain.connect(AC.destination);
+      return true;
+    } catch(e) { return false; }
+  }
+
+  function canPlay(id) {
+    if (!init()) return false;
+    if (activeCount >= MAX_CONCURRENT) return false;
+    const now = AC.currentTime;
+    if (cooldowns[id] && now < cooldowns[id]) return false;
+    const ct = cooldownTimes[id] || 0;
+    if (ct > 0) cooldowns[id] = now + ct;
+    return true;
+  }
+
+  function env(atk, sus, rel, peak = 1.0) {
+    const g = AC.createGain(), now = AC.currentTime;
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(peak, now + atk);
+    g.gain.setValueAtTime(peak, now + atk + sus);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + atk + sus + rel);
+    g.connect(masterGain);
+    return { g, end: now + atk + sus + rel };
+  }
+
+  function osc(type, freq, atk, sus, rel, vol = 1.0, freqEnd = null) {
+    const { g, end } = env(atk, sus, rel, vol);
+    const o = AC.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, AC.currentTime);
+    if (freqEnd !== null) o.frequency.exponentialRampToValueAtTime(freqEnd, end);
+    o.connect(g); o.start(); o.stop(end + 0.05);
+    activeCount++;
+    o.onended = () => { activeCount--; g.disconnect(); };
+  }
+
+  function nz(atk, sus, rel, vol = 1.0, lpFreq = 4000) {
+    const { g, end } = env(atk, sus, rel, vol);
+    const len = Math.ceil(AC.sampleRate * (atk + sus + rel + 0.05));
+    const buf = AC.createBuffer(1, len, AC.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = AC.createBufferSource(), lp = AC.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = lpFreq;
+    src.buffer = buf; src.connect(lp); lp.connect(g); src.start();
+    activeCount++;
+    src.onended = () => { activeCount--; g.disconnect(); lp.disconnect(); };
+  }
+
+  return {
+    pinFire()    { if(!canPlay('pinFire'))    return; osc('sawtooth',900,0.004,0.02,0.07,0.35,200); },
+    balloonPop() { if(!canPlay('balloonPop')) return; osc('sine',180,0.003,0.01,0.09,0.50,80); nz(0.002,0.01,0.05,0.25,1200); },
+    downgrade()  { if(!canPlay('downgrade'))  return; osc('triangle',260,0.003,0.01,0.07,0.40,140); },
+    shieldBreak(){ if(!canPlay('shieldBreak'))return; nz(0.003,0.02,0.12,0.55,6000); osc('sine',1400,0.003,0.005,0.08,0.25,600); },
+    spikeHit()   { if(!canPlay('spikeHit'))   return; osc('square',300,0.002,0.01,0.08,0.30,120); nz(0.002,0.01,0.04,0.15,2500); },
+    sawHit()     { if(!canPlay('sawHit'))     return; nz(0.001,0.01,0.06,0.40,3500); osc('sawtooth',220,0.001,0.008,0.05,0.20,80); },
+    escape()     { if(!canPlay('escape'))     return; osc('sine',440,0.01,0.05,0.20,0.60,200); osc('sine',330,0.01,0.05,0.25,0.40,160); },
+    bombBoom()   { if(!canPlay('bombBoom'))   return; nz(0.002,0.06,0.35,0.90,800); osc('sine',60,0.003,0.04,0.30,0.70,25); osc('sine',90,0.003,0.02,0.20,0.50,30); },
+    laser()      { if(!canPlay('laser'))      return; osc('sawtooth',1800,0.01,0.30,0.25,0.45,200); osc('sine',600,0.01,0.30,0.25,0.25,80); },
+    waveStart()  { if(!canPlay('waveStart'))  return; osc('square',440,0.01,0.04,0.08,0.30); setTimeout(()=>{ if(AC) osc('square',660,0.01,0.04,0.08,0.30); },90); },
+    bossWave()   { if(!canPlay('bossWave'))   return; osc('sawtooth',110,0.01,0.12,0.30,0.65,55); osc('square',220,0.01,0.08,0.25,0.40,80); setTimeout(()=>{ if(AC) osc('sawtooth',155,0.01,0.12,0.30,0.55,70); },120); },
+    gameWin()    { if(!canPlay('gameWin'))    return; [0,100,200,320,480].forEach((ms,i)=>{ setTimeout(()=>{ if(!AC)return; osc('triangle',[523,659,784,1047,1319][i],0.01,0.15,0.35,0.55); },ms); }); },
+    gameOver()   { if(!canPlay('gameOver'))   return; osc('sawtooth',220,0.01,0.20,0.60,0.60,55); osc('sawtooth',165,0.02,0.20,0.60,0.40,42); setTimeout(()=>{ if(AC) osc('sine',80,0.01,0.30,0.80,0.50,30); },200); },
+    towerBuild() { if(!canPlay('towerBuild')) return; osc('sine',880,0.005,0.03,0.10,0.40,1200); },
+    towerUpgrade(){ if(!canPlay('towerUpgrade'))return; osc('sine',660,0.005,0.04,0.10,0.35); setTimeout(()=>{ if(AC) osc('sine',880,0.005,0.04,0.10,0.45); },70); },
+  };
+})();
+// ─────────────────────────────────────────────────────────────────────────────
+
 // SUPERPOWER DEFINITIONS
 const SP={
   reloader:{name:'BOMB RELOADER',cost:250,k:'tower',
@@ -330,11 +418,13 @@ function startWave(){
     G.spawnTimer=0.45;G.phase='wave';
     G.flt.push({x:W/2,y:H/2-20,txt:'BOSS WAVE '+G.wave,sub:'PREPARE FOR BATTLE',
       life:1.8,max:1.8,big:true,col:'#ff4040'});
+    SFX.bossWave();
   }else{
     G.spawnQ=buildQueue(WDEF[G.wave-1]);
     G.spawnTimer=0.45;G.phase='wave';
     const n=G.spawnQ.length;
     G.flt.push({x:W/2,y:H/2-20,txt:'WAVE '+G.wave,sub:n+' INCOMING',life:1.8,max:1.8,big:true});
+    SFX.waveStart();
   }
   hud();
 }
@@ -354,7 +444,7 @@ function dmgBal(b,dmg){
   if(b.shieldHp>0){
     const sa=Math.min(b.shieldHp,dmg);
     b.shieldHp-=sa;dmg-=sa;consumed+=sa;
-    if(b.shieldHp<=0)shieldBreakPart(posAt(b.d));
+    if(b.shieldHp<=0){SFX.shieldBreak();shieldBreakPart(posAt(b.d));}
   }
   if(dmg<=0)return{consumed,spawnedId:null};
   const ha=Math.min(b.hp,dmg);
@@ -365,7 +455,7 @@ function dmgBal(b,dmg){
     if(b.type==='boss'){
       G.money+=b.rew;G.popped++;
       const p=posAt(b.d);
-      popPart(p,BALDEF.boss.col);
+      SFX.balloonPop();popPart(p,BALDEF.boss.col);
       G.flt.push({x:p.x,y:p.y-14,txt:'+$'+b.rew,life:.8,max:.8,big:false});
       const cnt=3+Math.floor(Math.random()*2);
       const types=['blue','red','green'];
@@ -380,7 +470,7 @@ function dmgBal(b,dmg){
     if(def.downgrades){
       G.money+=def.rew;
       const p=posAt(b.d);
-      downgradePart(p,def.col);
+      SFX.downgrade();downgradePart(p,def.col);
       G.flt.push({x:p.x+((Math.random()-.5)*16),y:p.y-14,txt:'+$'+def.rew,life:.8,max:.8,big:false});
       const child=mkBal(def.downgrades,b.d,false);
       spawnedId=child.id;
@@ -389,7 +479,7 @@ function dmgBal(b,dmg){
     }else{
       G.money+=def.rew;G.popped++;
       const p=posAt(b.d);
-      popPart(p,def.col);
+      SFX.balloonPop();popPart(p,def.col);
       G.flt.push({x:p.x+((Math.random()-.5)*16),y:p.y-14,txt:'+$'+def.rew,life:.8,max:.8,big:false});
       hud();
     }
@@ -404,6 +494,7 @@ function spkPart(x,y,up){for(let i=0;i<7;i++)G.part.push({x,y:y+2,vx:(Math.rando
 
 function detBomb(sl,t){
   const big=t.ups.big;const rng=big?160:108;
+  SFX.bombBoom();
   G.expl.push({x:sl.x,y:sl.y,r:4,dmg:99,life:.5,hit:[],dead:false,maxR:rng});
   for(let i=0;i<30;i++){const ang=Math.random()*Math.PI*2,spd=Math.random()*270+80;
     G.part.push({x:sl.x,y:sl.y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd-40,
@@ -480,7 +571,8 @@ function upd(dt){
       b.dead=true;G.lives=Math.max(0,G.lives-drain);G.escaped++;
       const txt=drain>1?'BOSS ESCAPED! -'+drain+' LIVES':'BREACH! -1 LIFE';
       G.flt.push({x:W/2,y:H-80,txt,life:.9,max:.9,big:false,col:'#f85149'});
-      if(G.lives<=0){endGame(false);return;}
+      SFX.escape();
+      if(G.lives<=0){SFX.gameOver();endGame(false);return;}
       hud();
     }
   }
@@ -496,7 +588,7 @@ function upd(dt){
       t.cdt=interval;
       const inR=G.bal.filter(b=>!b.dead).filter(b=>{const p=posAt(b.d);return Math.hypot(p.x-sl.x,p.y-sl.y)<28;});
       if(inR.length>0){
-        t.active=true;spkPart(sl.x,sl.y,t.ups.fast);
+        t.active=true;spkPart(sl.x,sl.y,t.ups.fast);SFX.spikeHit();
         for(const b of inR)dmgBal(b,1);
         setTimeout(()=>{if(t)t.active=false;},160);
       }
@@ -506,7 +598,7 @@ function upd(dt){
       if(!inR.length)continue;
       const tgt=inR.sort((a,b2)=>b2.d-a.d)[0];
       const tp=posAt(tgt.d);
-      G.proj.push(mkPin(sl.x,sl.y,tp.x,tp.y,t.ups.sharp?2:1));
+      G.proj.push(mkPin(sl.x,sl.y,tp.x,tp.y,t.ups.sharp?2:1));SFX.pinFire();
       t.cdt=1.3;
     }else if(t.kind==='bomb'){
       if(t.fuse>0&&t.cdt>0)t.cdt-=dt;
@@ -515,6 +607,7 @@ function upd(dt){
       if(t.cdt>0)continue;
       t.cdt=1.0;
       const inR=G.bal.filter(b=>!b.dead).filter(b=>{const p=posAt(b.d);return Math.hypot(p.x-sl.x,p.y-sl.y)<28;});
+      if(inR.length>0)SFX.sawHit();
       for(const b of inR){
         if(b.type==='boss'){dmgBal(b,2);continue;}
         const pos=posAt(b.d);
@@ -650,7 +743,7 @@ function upd(dt){
 
   // Check wave complete
   if(G.spawnQ.length===0&&G.bal.length===0&&G.proj.length===0&&G.expl.length===0&&G.mwaves.length===0){
-    if(G.wave>=50){setTimeout(()=>endGame(true),700);}
+    if(G.wave>=50){SFX.gameWin();setTimeout(()=>endGame(true),700);}
     else{
       const nextWave=G.wave+1;
       const isBoss=BOSS_WAVES.includes(nextWave);
@@ -1145,7 +1238,7 @@ function slotClick(sl){
     if(key==='bomb'&&t.fuse>0&&t.cdt>0)items.push({label:'⏱  CHANGE COUNTDOWN',desc:'Reopen timer (game pauses)',action:()=>openBombTimer(sl)});
     if(key==='bomb'&&t.reloadUses>0)items.push({label:'ℹ  RELOADS: '+t.reloadUses+' remaining',disabled:true});
     for(const u of TD[key].up||[]){
-      if(!t.ups[u.id])items.push({label:'⬆  '+u.name,desc:u.desc,cost:u.cost,disabled:G.money<u.cost,action:()=>{G.money-=u.cost;t.ups[u.id]=true;hud();saveGame();}});
+      if(!t.ups[u.id])items.push({label:'⬆  '+u.name,desc:u.desc,cost:u.cost,disabled:G.money<u.cost,action:()=>{G.money-=u.cost;t.ups[u.id]=true;SFX.towerUpgrade();hud();saveGame();}});
       else items.push({label:'✓  '+u.name+' (INSTALLED)',disabled:true});
     }
     const totalSpent=t.base+Object.keys(t.ups).filter(k=>t.ups[k]).reduce((a,k)=>{
@@ -1193,11 +1286,12 @@ function placeSP(sl,spkind){
     }
   }
   if(spkind==='sawblade'){t.cdt=0;}
-  sl.tower=t;hud();saveGame();
+  sl.tower=t;SFX.towerBuild();hud();saveGame();
 }
 
 function fireSatLas(sl){
   sl.tower.used=true;
+  SFX.laser();
   G.lasers.push({x:-60,vx:180,satY:18,fired:false,srcSlot:sl,dead:false,beamAlpha:0});
 }
 
@@ -1217,7 +1311,7 @@ function placeTower(sl,key){
   if(key==='sling')t.range=TD.sling.range;
   if(key==='bomb')t.fuse=0;
   if(key==='tax')t.taxed=new Set();
-  sl.tower=t;hud();saveGame();
+  sl.tower=t;SFX.towerBuild();hud();saveGame();
 }
 
 // INPUT
