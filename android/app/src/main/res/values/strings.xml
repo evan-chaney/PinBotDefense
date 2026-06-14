@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PinBot Defense</string>
+    <string name="title_activity_main">PinBot Defense</string>
+    <string name="package_name">com.pinbotdefense.app</string>
+    <string name="custom_url_scheme">com.pinbotdefense.app</string>
+</resources>
