@@ -601,8 +601,7 @@ function upd(dt){
       G.proj.push(mkPin(sl.x,sl.y,tp.x,tp.y,t.ups.sharp?2:1));SFX.pinFire();
       t.cdt=1.3;
     }else if(t.kind==='bomb'){
-      if(t.fuse>0&&t.cdt>0)t.cdt-=dt;
-      else if(t.fuse>0&&t.cdt<=0)detBomb(sl,t);
+      if(t.fuse>0&&t.cdt<=0)detBomb(sl,t);
     }else if(t.spkind==='sawblade'){
       if(t.cdt>0)continue;
       t.cdt=1.0;
@@ -718,17 +717,31 @@ function upd(dt){
   // Satellite lasers
   for(const lz of G.lasers){
     lz.x+=lz.vx*dt;
-    if(!lz.fired&&lz.x>=0&&lz.x<=W){
+    if(lz.x>=0&&lz.x<=W){
       // Destroy any balloon whose on-screen x is near the laser beam
       for(const b of G.bal){
         if(b.dead)continue;
         const bp=posAt(b.d);
         if(Math.abs(bp.x-lz.x)<12){
           if(b.type==='boss'){dmgBal(b,8);continue;}
-          // Fully destroy — no downgrade
-          b.dead=true;G.money+=BALDEF[b.type].rew;G.popped++;
-          popPart(bp,BALDEF[b.type].col);
-          G.flt.push({x:bp.x,y:bp.y-14,txt:'+$'+BALDEF[b.type].rew,life:.8,max:.8,big:false});
+          b.dead=true;
+          const def=BALDEF[b.type];
+          if(def.downgrades){
+            const childDef=BALDEF[def.downgrades];
+            G.money+=def.rew;
+            if(childDef.downgrades){
+              G.money+=childDef.rew;
+              G.newBals.push(mkBal(childDef.downgrades,b.d,false));
+              G.flt.push({x:bp.x,y:bp.y-14,txt:'+$'+(def.rew+childDef.rew),life:.8,max:.8,big:false});
+            }else{
+              G.money+=childDef.rew;G.popped++;
+              G.flt.push({x:bp.x,y:bp.y-14,txt:'+$'+(def.rew+childDef.rew),life:.8,max:.8,big:false});
+            }
+          }else{
+            G.money+=def.rew;G.popped++;
+            G.flt.push({x:bp.x,y:bp.y-14,txt:'+$'+def.rew,life:.8,max:.8,big:false});
+          }
+          popPart(bp,def.col);
         }
       }
       hud();
@@ -1292,7 +1305,7 @@ function placeSP(sl,spkind){
 function fireSatLas(sl){
   sl.tower.used=true;
   SFX.laser();
-  G.lasers.push({x:-60,vx:180,satY:18,fired:false,srcSlot:sl,dead:false,beamAlpha:0});
+  G.lasers.push({x:-60,vx:180,satY:18,srcSlot:sl,dead:false,beamAlpha:0});
 }
 
 function openBombTimer(sl){
@@ -1449,6 +1462,10 @@ function loadSavedGame(){
         if(idx>=0&&idx<G.slots.length)G.slots[i].tower.linkedBomb=G.slots[idx];
         delete G.slots[i].tower.linkedBombIdx;
       }
+    }
+    for(let i=0;i<G.slots.length;i++){
+      const t=G.slots[i].tower;
+      if(t&&t.kind==='tax')t.taxed=new Set();
     }
     hud();
     gameSpeed=1;
