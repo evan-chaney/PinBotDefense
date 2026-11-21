@@ -238,7 +238,7 @@ const MODES=['strongest','armored','first','last'];
 
 // ─── WAVES (50) ──────────────────────────────────────────────────────────────
 // Waves 1-10 are hand-written. After that, wave size grows steadily and monsters scale:
-//   HP +5%/wave, armor +3%/wave, kill rewards +3%/wave (all relative to wave 10).
+//   armor +3%/wave and kill rewards +3%/wave (relative to wave 10). Health is +5%/wave from wave 1.
 const BASE_WAVES=[
   {g:8 },                               // 1
   {g:12},                               // 2
@@ -263,7 +263,7 @@ function waveDef(n){
   return{g:c[0],r:c[1],s:c[2],p:c[3]};
 }
 const over10=n=>Math.max(0,n-10);
-const hpScale=n=>1+over10(n)*.05;
+const hpScale=n=>1+(n-1)*.05;                       // +5% health per wave, from wave 1
 const armorScale=n=>1+over10(n)*.03;
 const rewScale=n=>1+over10(n)*.03;
 const spawnGap=n=>Math.max(.35,.6-over10(n)*.006);
@@ -425,7 +425,7 @@ function mkEnemy(type,wave){
     armor=Math.ceil(EDEF.green.armor*armorScale(w))*BOSS_ARMOR_MULT;
     rew=Math.round(tier.rew*D.rewMult);drain=tier.drain;boss=true;
   }else{
-    hp=Math.ceil(def.hp*D.hpMult*hpScale(w));
+    hp=def.hp*D.hpMult*hpScale(w); // fractional on purpose, so each wave is a clean +5%
     armor=Math.ceil(def.armor*armorScale(w));
     rew=Math.round(def.rew*D.rewMult*rewScale(w));
   }
