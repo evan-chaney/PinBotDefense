@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tower Defense Games</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{min-height:100vh;background:#0a0f14;color:#d6e2ee;font-family:'Share Tech Mono','Courier New',monospace;display:flex;flex-direction:column;align-items:center;padding:40px 16px;}
+h1{font-size:24px;letter-spacing:4px;text-align:center;margin-bottom:6px;}
+.sub{font-size:11px;color:#5a7a92;letter-spacing:3px;text-transform:uppercase;margin-bottom:32px;text-align:center;}
+.games{display:flex;flex-wrap:wrap;gap:20px;justify-content:center;width:100%;max-width:760px;}
+a.card{flex:1 1 300px;max-width:360px;text-decoration:none;color:inherit;border:1px solid var(--bd);border-radius:10px;background:var(--bg);padding:22px 20px;display:flex;flex-direction:column;gap:10px;transition:transform .15s,border-color .15s,box-shadow .15s;}
+a.card:hover,a.card:focus-visible{transform:translateY(-3px);border-color:var(--ac);box-shadow:0 6px 24px var(--gl);outline:none;}
+.tag{font-size:10px;letter-spacing:2px;color:var(--ac);text-transform:uppercase;}
+.name{font-size:20px;letter-spacing:2px;font-weight:bold;color:#fff;}
+.desc{font-size:12px;line-height:1.6;color:var(--tx);}
+.feat{font-size:11px;line-height:1.7;color:var(--tx);list-style:none;opacity:.85;}
+.feat li:before{content:'▸ ';color:var(--ac);}
+.play{margin-top:auto;padding-top:10px;font-size:12px;letter-spacing:2px;color:var(--ac);font-weight:bold;}
+.mon{--bg:#0d160d;--bd:#22351f;--ac:#7fd35a;--gl:rgba(127,211,90,.2);--tx:#8fb088;}
+.pin{--bg:#0b1725;--bd:#162d47;--ac:#58a6ff;--gl:rgba(88,166,255,.2);--tx:#7d9cb8;}
+footer{margin-top:40px;font-size:10px;color:#34495a;letter-spacing:1px;text-align:center;}
+</style>
+</head>
+<body>
+<h1>TOWER DEFENSE</h1>
+<div class="sub">Pick your battlefield</div>
+<div class="games">
+  <a class="card mon" href="monster-turret-defense.html">
+    <div class="tag">New</div>
+    <div class="name">MONSTER TURRET DEFENSE</div>
+    <div class="desc">Hold the graveyard against zombies, skeletons and spiders. Armor soaks damage before health — unless you pierce it.</div>
+    <ul class="feat">
+      <li>10 turrets and 6 traps, from cannons to tar pits</li>
+      <li>11 magical runes: fire, frost, lightning, piercing and more</li>
+      <li>Normal, Hard and Hardcore difficulty</li>
+    </ul>
+    <div class="play">PLAY ▶</div>
+  </a>
+  <a class="card pin" href="pinbot-defense.html">
+    <div class="tag">Classic</div>
+    <div class="name">PINBOT DEFENSE</div>
+    <div class="desc">Robots that shoot pins pop waves of balloons across five maps, with shields, bosses and superpowers.</div>
+    <ul class="feat">
+      <li>50 waves, 5 maps</li>
+      <li>Slingshots, bombs, magnets &amp; toll booths</li>
+      <li>Boss waves and superpowers</li>
+    </ul>
+    <div class="play">PLAY ▶</div>
+  </a>
+</div>
+<footer>Best played on a phone or a narrow window.</footer>
+</body>
+</html>
