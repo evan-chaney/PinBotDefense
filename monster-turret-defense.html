@@ -145,7 +145,22 @@ const EDEF={
   red:     {name:'RED ZOMBIE',  hp:8,armor:3,spd:62,rew:7,r:10},
   skeleton:{name:'SKELETON',    hp:7,armor:5,spd:46,rew:8,r:10},
   spider:  {name:'SPIDER',      hp:3,armor:1,spd:56,rew:6,r:13},
+  // Boss: hp / armor / reward / hearts-drained come from BOSS_TIERS (see below)
+  king:    {name:'KING ZOMBIE', hp:0,armor:0,spd:28,rew:0,r:17,boss:true},
 };
+// The King Zombie appears on these waves, a bit stronger each time. Escorts are 60% of a normal wave.
+// Armor = BOSS_ARMOR_MULT x what a green zombie has at that wave. Bosses resist crowd control:
+// they can't be rooted, stuns last half as long, and slows are half as strong.
+const BOSS_WAVES=[10,20,30,40,50];
+const BOSS_TIERS=[
+  {hp:120, rew:60, drain:3},
+  {hp:300, rew:100,drain:4},
+  {hp:600, rew:150,drain:5},
+  {hp:1000,rew:220,drain:6},
+  {hp:1600,rew:300,drain:8},
+];
+const BOSS_ARMOR_MULT=3, BOSS_ESCORT=.6;
+const isBossWave=n=>BOSS_WAVES.includes(n);
 const UNDEAD={green:1,red:1,skeleton:1};
 
 // ─── ENCHANTMENTS ────────────────────────────────────────────────────────────
@@ -182,7 +197,7 @@ const TD={
   spike:  {name:'SPIKE TRAP',      cost:100,k:'path', range:28, ench:ALL_ENCH,
            desc:'Stabs everything standing on it.'},
   bear:   {name:'BEAR TRAP',       cost:120,k:'path', range:22, ench:['haste','farsight','time'],
-           desc:'Roots the first enemy for 3s, then resets.'},
+           desc:'Roots the first enemy for 3s, then resets. Bosses are immune.'},
   oil:    {name:'OIL SLICK',       cost:140,k:'path', range:32, ench:['farsight'],
            desc:'Harmless — until fire hits it. Then it erupts.'},
   grinder:{name:'GRINDER',         cost:300,k:'path', range:30, ench:ALL_ENCH,
@@ -264,7 +279,7 @@ const SFX = (() => {
   const cooldownTimes = {
     cannonFire:0.05, bombFire:0, shrapnel:0.05, boom:0, spikeHit:0.10, clank:0.05,
     armorBreak:0.07, enemyDie:0.04, escape:0.25, waveStart:0, gameWin:0, gameOver:0,
-    towerBuild:0, towerUpgrade:0, gat:0.05, bolt:0.05, zap:0.06, flame:0.10, snap:0, holy:0.12,
+    towerBuild:0, towerUpgrade:0, gat:0.05, bolt:0.05, zap:0.06, flame:0.10, snap:0, holy:0.12, bossWave:0,
   };
   function init() {
     if (AC) return true;
@@ -336,6 +351,7 @@ const SFX = (() => {
     zap()        { if(!canPlay('zap'))        return; osc('sawtooth',2200,0.001,0.02,0.08,0.22,400); nz(0.001,0.01,0.04,0.12,6000); },
     flame()      { if(!canPlay('flame'))      return; nz(0.01,0.05,0.15,0.22,2500); },
     snap()       { if(!canPlay('snap'))       return; osc('square',180,0.001,0.01,0.10,0.50,60); nz(0.001,0.01,0.05,0.30,3000); },
+    bossWave()   { if(!canPlay('bossWave'))   return; osc('sawtooth',110,0.01,0.12,0.30,0.65,55); osc('square',220,0.01,0.08,0.25,0.40,80); setTimeout(()=>{ if(AC) osc('sawtooth',155,0.01,0.12,0.30,0.55,70); },120); },
     holy()       { if(!canPlay('holy'))       return; osc('sine',1000,0.005,0.03,0.18,0.22,1500); },
   };
 })();
@@ -364,39 +380,60 @@ function hud(){
   document.getElementById('infobar').textContent=D.name+' · TAP SLOT TO BUILD · TAP TURRET TO ENCHANT/SELL';
 }
 
-function waveTotal(n){const w=waveDef(n);return['g','r','s','p'].reduce((a,k)=>a+Math.ceil((w[k]||0)*D.countMult),0);}
+function waveTotal(n){
+  const w=waveDef(n),f=isBossWave(n)?BOSS_ESCORT:1;
+  return['g','r','s','p'].reduce((a,k)=>a+Math.ceil((w[k]||0)*D.countMult*f),0)+(isBossWave(n)?1:0);
+}
 // Estimated income from waves 1..n-1 (65% of kills, like the original's skip button)
 function skipFunds(n){
   const map={g:'green',r:'red',s:'skeleton',p:'spider'};let sum=0;
   for(let w=1;w<n;w++){const d=waveDef(w);
-    for(const k in map)sum+=Math.ceil((d[k]||0)*D.countMult)*Math.round(EDEF[map[k]].rew*D.rewMult*rewScale(w));}
+    const f=isBossWave(w)?BOSS_ESCORT:1;
+    for(const k in map)sum+=Math.ceil((d[k]||0)*D.countMult*f)*Math.round(EDEF[map[k]].rew*D.rewMult*rewScale(w));
+    if(isBossWave(w))sum+=Math.round(BOSS_TIERS[BOSS_WAVES.indexOf(w)].rew*D.rewMult);}
   return D.money+Math.floor(sum*.65);
 }
-function buildQueue(w){
-  const q=[],map={g:'green',r:'red',s:'skeleton',p:'spider'};
-  for(const k in map){const n=Math.ceil((w[k]||0)*D.countMult);for(let i=0;i<n;i++)q.push(map[k]);}
+function buildQueue(w,boss){
+  const q=[],map={g:'green',r:'red',s:'skeleton',p:'spider'},f=boss?BOSS_ESCORT:1;
+  for(const k in map){const n=Math.ceil((w[k]||0)*D.countMult*f);for(let i=0;i<n;i++)q.push(map[k]);}
   for(let i=q.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[q[i],q[j]]=[q[j],q[i]];}
+  if(boss)q.unshift('king'); // the king leads the horde
   return q;
 }
 
 function startWave(){
   G.wave++;
-  G.spawnQ=buildQueue(waveDef(G.wave));
+  const boss=isBossWave(G.wave);
+  G.spawnQ=buildQueue(waveDef(G.wave),boss);
   G.spawnTimer=0.45;G.phase='wave';
-  G.flt.push({x:W/2,y:H/2-20,txt:'WAVE '+G.wave,sub:G.spawnQ.length+' INCOMING',life:1.8,max:1.8,big:true});
-  SFX.waveStart();
+  if(boss){
+    G.flt.push({x:W/2,y:H/2-20,txt:'BOSS WAVE '+G.wave,sub:'THE KING ZOMBIE APPROACHES',life:2.2,max:2.2,big:true,col:'#ffd040'});
+    SFX.bossWave();
+  }else{
+    G.flt.push({x:W/2,y:H/2-20,txt:'WAVE '+G.wave,sub:G.spawnQ.length+' INCOMING',life:1.8,max:1.8,big:true});
+    SFX.waveStart();
+  }
   hud();
 }
 
 function mkEnemy(type,wave){
   const def=EDEF[type],w=wave||1;
-  const hp=Math.ceil(def.hp*D.hpMult*hpScale(w));
-  const armor=Math.ceil(def.armor*armorScale(w));
+  let hp,armor,rew,boss=false,drain=1;
+  if(def.boss){
+    const tier=BOSS_TIERS[Math.max(0,BOSS_WAVES.indexOf(w))];
+    hp=Math.ceil(tier.hp*D.hpMult);
+    armor=Math.ceil(EDEF.green.armor*armorScale(w))*BOSS_ARMOR_MULT;
+    rew=Math.round(tier.rew*D.rewMult);drain=tier.drain;boss=true;
+  }else{
+    hp=Math.ceil(def.hp*D.hpMult*hpScale(w));
+    armor=Math.ceil(def.armor*armorScale(w));
+    rew=Math.round(def.rew*D.rewMult*rewScale(w));
+  }
   return{id:eid++,type,hp,maxHp:hp,armor,maxArmor:armor,spd:def.spd,d:-20,r:def.r,
-    rew:Math.round(def.rew*D.rewMult*rewScale(w)),dead:false,flash:0,slow:null,burn:null,rootT:0,stunT:0};
+    rew,boss,drain,dead:false,flash:0,slow:null,burn:null,rootT:0,stunT:0};
 }
 
-const BLOOD={green:'#5fb04a',red:'#b02a2a',skeleton:'#ece6d2',spider:'#4a8a3a'};
+const BLOOD={king:'#5fb04a',green:'#5fb04a',red:'#b02a2a',skeleton:'#ece6d2',spider:'#4a8a3a'};
 function burst(x,y,col,n,spd,life,size){
   for(let i=0;i<n;i++){const a=Math.random()*TAU,s=Math.random()*spd+spd*.3;
     G.part.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-20,life:life*(.6+Math.random()*.4),max:life,col,r:Math.random()*size+size*.5});}
@@ -433,7 +470,7 @@ function leadPoint(e,sx,sy,spd){
   return p;
 }
 
-function chill(e,key,m,t){(e.slow||(e.slow={}))[key]={m,t};}
+function chill(e,key,m,t){if(e.boss)m=1-(1-m)*.5;(e.slow||(e.slow={}))[key]={m,t};}
 function ignite(e,src,pierce){
   if(e.dead)return;
   if(e.burn){e.burn.t=3;e.burn.src=src;e.burn.pierce=pierce;}
@@ -484,8 +521,13 @@ function dmgEnemy(e,dmg,pierce,src){
     e.dead=true;G.killed++;
     const rew=Math.round(e.rew*(src&&hasE(src,'plunder')?1.25:1));
     G.money+=rew;
-    SFX.enemyDie();burst(p.x,p.y,BLOOD[e.type],12,170,.6,3.5);
-    G.flt.push({x:p.x+((Math.random()-.5)*16),y:p.y-14,txt:'+$'+rew,life:.8,max:.8,big:false});
+    if(e.boss){
+      SFX.boom();burst(p.x,p.y,'#f0c830',30,260,.9,5);burst(p.x,p.y,BLOOD.king,24,200,.8,4);
+      G.flt.push({x:W/2,y:H/2-20,txt:'KING SLAIN!  +$'+rew,life:2,max:2,big:true,col:'#ffd040'});
+    }else{
+      SFX.enemyDie();burst(p.x,p.y,BLOOD[e.type],12,170,.6,3.5);
+      G.flt.push({x:p.x+((Math.random()-.5)*16),y:p.y-14,txt:'+$'+rew,life:.8,max:.8,big:false});
+    }
     hud();
   }
 }
@@ -571,7 +613,7 @@ const TB={
   },
   bear(sl,t){
     if(t.cdt>0)return;
-    const tgt=pickTarget(sl.x,sl.y,rangeOf(t),'first',e=>!(e.rootT>0));
+    const tgt=pickTarget(sl.x,sl.y,rangeOf(t),'first',e=>!(e.rootT>0)&&!e.boss);
     if(!tgt)return;
     tgt.rootT=ST.bear.root;t.cdt=ST.bear.reset;t.flashT=.3;SFX.snap();
     const p=posAt(tgt.d);burst(p.x,p.y,'#c8a060',8,100,.35,2.5);
@@ -713,8 +755,9 @@ function upd(dt){
     if(e.dead)continue;
     e.d+=e.spd*m*dt;
     if(e.d>=PD.total){
-      e.dead=true;G.lives=Math.max(0,G.lives-D.drain);G.escaped++;
-      G.flt.push({x:W/2,y:H-80,txt:'BREACH! -'+D.drain+(D.drain>1?' HEARTS':' HEART'),life:.9,max:.9,big:false,col:'#f85149'});
+      const loss=(e.drain||1)*D.drain;
+      e.dead=true;G.lives=Math.max(0,G.lives-loss);G.escaped++;
+      G.flt.push({x:W/2,y:H-80,txt:(e.boss?'THE KING ESCAPED! -':'BREACH! -')+loss+(loss>1?' HEARTS':' HEART'),life:e.boss?1.6:.9,max:e.boss?1.6:.9,big:false,col:'#f85149'});
       SFX.escape();
       if(G.lives<=0){SFX.gameOver();endGame(false);return;}
       hud();
@@ -742,7 +785,7 @@ function upd(dt){
       if(t.timeT<=0){
         const r=rangeOf(t),hit=enemiesIn(sl.x,sl.y,r);
         if(hit.length){
-          for(const e of hit)e.stunT=Math.max(e.stunT||0,ST.time.stun);
+          for(const e of hit)e.stunT=Math.max(e.stunT||0,ST.time.stun*(e.boss?.5:1));
           G.rings.push({x:sl.x,y:sl.y,r:6,maxR:r,life:.5,max:.5,col:'#c090ff'});
           t.timeT=ST.time.every;
         }else t.timeT=.5;
@@ -798,7 +841,9 @@ function upd(dt){
     if(G.wave>=WAVE_COUNT){SFX.gameWin();setTimeout(()=>endGame(true),700);G.phase='done';}
     else{
       G.phase='between';G.betweenTimer=1.5;saveGame();
-      G.flt.push({x:W/2,y:H/2,txt:'WAVE '+(G.wave+1)+' INCOMING',sub:'PREPARE DEFENSES',life:1.4,max:1.4,big:true});
+      const nb=isBossWave(G.wave+1);
+      G.flt.push({x:W/2,y:H/2,txt:nb?'! BOSS INCOMING !':'WAVE '+(G.wave+1)+' INCOMING',sub:nb?'THE KING ZOMBIE COMES':'PREPARE DEFENSES',
+        life:nb?2.4:1.4,max:nb?2.4:1.4,big:true,col:nb?'#ffd040':undefined});
       const bw=document.getElementById('bw');
       if(!gamePaused){bw.textContent='⏸ PAUSE';bw.className='btn pause';bw.disabled=false;}
     }
@@ -964,6 +1009,26 @@ function drawEnemy(e){
     ctx.fillStyle=bone;ctx.beginPath();ctx.arc(r*.3,0,r*.55,0,TAU);ctx.fill();ctx.strokeStyle=shade;ctx.stroke();
     ctx.fillStyle='#1a1a1a';
     for(const s of[-1,1]){ctx.beginPath();ctx.arc(r*.58,s*r*.24,2.1,0,TAU);ctx.fill();}
+  }else if(e.type==='king'){
+    // royal cloak
+    ctx.fillStyle='#5a1a6a';ctx.beginPath();ctx.ellipse(-r*.4,0,r*.95,r*1.08,0,0,TAU);ctx.fill();
+    ctx.strokeStyle='#e0b838';ctx.lineWidth=1.8;ctx.stroke();
+    // arms
+    ctx.strokeStyle='#6ec65a';ctx.lineWidth=4.5;
+    for(const s of[-1,1]){ctx.beginPath();ctx.moveTo(r*.2,s*r*.72);ctx.lineTo(r+9,s*(r*.45)+sw*s*1.8);ctx.stroke();}
+    // body & head
+    ctx.fillStyle='#8a2a3a';ctx.beginPath();ctx.ellipse(-r*.05,0,r*.68,r*.88,0,0,TAU);ctx.fill();
+    ctx.fillStyle='#6ec65a';ctx.beginPath();ctx.arc(r*.25,0,r*.55,0,TAU);ctx.fill();
+    ctx.strokeStyle='#2a6a20';ctx.lineWidth=1.2;ctx.stroke();
+    ctx.fillStyle='#ff3030';
+    for(const s of[-1,1]){ctx.beginPath();ctx.arc(r*.58,s*r*.22,2,0,TAU);ctx.fill();}
+    // crown: a spiked golden ring around the head
+    const cx=r*.25,pts=7;
+    ctx.beginPath();
+    for(let i=0;i<pts*2;i++){const a=i/(pts*2)*TAU,rr=i%2?r*.5:r*.78;const px=cx+Math.cos(a)*rr,py=Math.sin(a)*rr;i?ctx.lineTo(px,py):ctx.moveTo(px,py);}
+    ctx.closePath();ctx.fillStyle='#f0c830';ctx.fill();ctx.strokeStyle='#a07810';ctx.lineWidth=1.2;ctx.stroke();
+    ctx.fillStyle='#6ec65a';ctx.beginPath();ctx.arc(cx,0,r*.42,0,TAU);ctx.fill();
+    ctx.fillStyle='#d02030';ctx.beginPath();ctx.arc(cx+r*.62,0,2,0,TAU);ctx.fill();
   }else{
     ctx.strokeStyle='#1c1228';ctx.lineWidth=2;
     for(const s of[-1,1])for(let i=0;i<4;i++){
@@ -994,8 +1059,9 @@ function drawEnemy(e){
     ctx.fillStyle='#ff8a20';ctx.beginPath();ctx.moveTo(p.x-3,p.y-r+1);ctx.lineTo(p.x,p.y-r-7+fl);ctx.lineTo(p.x+3,p.y-r+1);ctx.fill();
     ctx.fillStyle='#ffe060';ctx.beginPath();ctx.moveTo(p.x-1.5,p.y-r+1);ctx.lineTo(p.x,p.y-r-3+fl);ctx.lineTo(p.x+1.5,p.y-r+1);ctx.fill();
   }
-  if(e.hp<e.maxHp||e.armor<e.maxArmor){
-    const bw=r*2+10,bx=p.x-bw/2,by=p.y-r-12;
+  if(e.boss||e.hp<e.maxHp||e.armor<e.maxArmor){
+    const bw=e.boss?46:r*2+10,bx=p.x-bw/2,by=p.y-r-12;
+    if(e.boss){ctx.fillStyle='#ffd040';ctx.font='bold 8px "Share Tech Mono",monospace';ctx.textAlign='center';ctx.fillText('KING ZOMBIE',p.x,by-9);ctx.textAlign='left';}
     ctx.fillStyle='#000a';ctx.fillRect(bx-1,by-1,bw+2,5);
     ctx.fillStyle='#e0403a';ctx.fillRect(bx,by,bw*Math.max(0,e.hp/e.maxHp),3);
     if(e.maxArmor>0){

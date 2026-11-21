@@ -23,3 +23,7 @@ Settings → Pages → deploy from branch, root folder. `index.html` is the land
 - **Traps (path slots):** Landmine, Tar Pit, Spike Trap, Bear Trap, Oil Slick (erupts when hit by fire), Grinder.
 - **Runes:** each turret has one *element* slot (Fire, Frost, Lightning) and one *rune* slot (Piercing, Corrosion, Haste, Far-Sight, Echo, Plunder, Sunfire, Time). The second enchantment on a turret costs 50% more.
 - Everything is data-driven: `TD` (turrets/traps), `ST` (stats), `ENCH` (runes), `TB` (behaviors).
+
+### Boss: the King Zombie
+
+Appears on waves 10, 20, 30, 40 and 50 at the head of a horde (60% of a normal wave). Health 120 → 1600, armor 3x a green zombie, slow. It resists crowd control (immune to bear traps, stuns halved, slows halved). If it escapes it costs 3-8 hearts (doubled on Hard). Tuned in `BOSS_TIERS`, `BOSS_ARMOR_MULT` and `BOSS_ESCORT`.
