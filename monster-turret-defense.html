@@ -371,13 +371,21 @@ function init(diffId){
     spawnQ:[],spawnTimer:0,betweenTimer:0,killed:0,escaped:0,sel:null};
 }
 
-function hud(){
-  const vl=document.getElementById('vl');
-  vl.textContent=G.lives;
-  vl.className='sv lv'+(G.lives<=3?' lo':'');
-  document.getElementById('vm').textContent=G.money;
-  document.getElementById('vw').textContent=G.wave+'/'+WAVE_COUNT;
-  document.getElementById('infobar').textContent=D.name+' · TAP SLOT TO BUILD · TAP TURRET TO ENCHANT/SELL';
+// hud() only marks the HUD dirty; flushHud() writes to the DOM at most once per frame,
+// and only the values that actually changed (kills can happen dozens of times per frame).
+let hudDirty=true;
+const HUD_EL={vl:document.getElementById('vl'),vm:document.getElementById('vm'),vw:document.getElementById('vw'),infobar:document.getElementById('infobar')};
+const hudCache={};
+function hudSet(id,v,prop){prop=prop||'textContent';const k=id+prop;if(hudCache[k]!==v){hudCache[k]=v;HUD_EL[id][prop]=v;}}
+function hud(){hudDirty=true;}
+function flushHud(){
+  if(!hudDirty||!G)return;
+  hudDirty=false;
+  hudSet('vl',String(G.lives));
+  hudSet('vl','sv lv'+(G.lives<=3?' lo':''),'className');
+  hudSet('vm',String(G.money));
+  hudSet('vw',G.wave+'/'+WAVE_COUNT);
+  hudSet('infobar',D.name+' · TAP SLOT TO BUILD · TAP TURRET TO ENCHANT/SELL');
 }
 
 function waveTotal(n){
@@ -610,6 +618,7 @@ const TB={
     for(const e of enemiesIn(sl.x,sl.y,ST.mine.blast))hitEnemy(e,ST.mine.dmg,false,null,{noChain:true});
     igniteOilNear(sl.x,sl.y,ST.mine.blast);
     sl.tower=null; // spent
+    if(G.sel===sl)closeModal(); // don't leave a menu open for a trap that no longer exists
   },
   bear(sl,t){
     if(t.cdt>0)return;
@@ -1280,7 +1289,7 @@ function slotClick(sl){
     G.sel=sl;
     if(t.kind==='sniper'){
       items.push({label:'🎯  TARGET: '+(t.mode||'strongest').toUpperCase(),desc:'Tap to cycle: strongest → armored → first → last',
-        action:()=>{t.mode=MODES[(MODES.indexOf(t.mode)+1)%MODES.length];saveGame();slotClick(sl);}});
+        action:()=>{if(sl.tower!==t)return;t.mode=MODES[(MODES.indexOf(t.mode)+1)%MODES.length];saveGame();slotClick(sl);}});
     }
     const have=(t.ench.element?1:0)+(t.ench.rune?1:0);
     for(const id of def.ench){
@@ -1289,11 +1298,11 @@ function slotClick(sl){
       if(t.ench[E.slot])continue; // that slot is taken by another enchantment
       const cost=enchCost(t.kind,id,have);
       items.push({label:'✦  '+E.name,desc:'['+E.slot.toUpperCase()+'] '+E.desc,cost,disabled:G.money<cost,
-        action:()=>{G.money-=cost;t.spent+=cost;t.ench[E.slot]=id;SFX.towerUpgrade();hud();saveGame();}});
+        action:()=>{if(sl.tower!==t||t.ench[E.slot]||G.money<cost)return;G.money-=cost;t.spent+=cost;t.ench[E.slot]=id;SFX.towerUpgrade();hud();saveGame();}});
     }
     const sv=Math.floor(t.spent*.5);
     items.push({label:'🗑  SELL',earn:sv,danger:true,desc:'Recover $'+sv+' (50% of $'+t.spent+')',
-      action:()=>{G.money+=sv;sl.tower=null;hud();saveGame();}});
+      action:()=>{if(sl.tower!==t)return;G.money+=sv;sl.tower=null;hud();saveGame();}});
     openModal(def.name,items);
   }else{
     const keys=Object.keys(TD).filter(k=>TD[k].k===sl.k).sort((a,b)=>TD[a].cost-TD[b].cost);
@@ -1302,6 +1311,7 @@ function slotClick(sl){
   }
 }
 function placeTower(sl,key){
+  if(sl.tower||G.money<TD[key].cost)return; // stale menu or not enough funds
   G.money-=TD[key].cost;
   sl.tower=mkTower(key);
   SFX.towerBuild();hud();saveGame();
@@ -1396,46 +1406,64 @@ function selectDifficulty(id){
 }
 
 // ─── SAVE / LOAD ─────────────────────────────────────────────────────────────
-// v1 saves (pre-runes) are migrated: the old piercing upgrade becomes the Rune of Piercing.
+// Saves are written between waves and while preparing — never mid-wave — so resuming
+// always restarts the next wave cleanly (no skipped waves, no dodging a boss).
+// Anything read back from storage is validated before use.
 const SAVE_KEY='monsterturretdefense_save';
 function saveGame(){
-  if(!G||G.wave<1||G.phase==='done')return;
+  if(!G||G.wave<1||G.phase==='done'||G.phase==='wave')return;
   try{
     const slots=G.slots.map(s=>s.tower?{tower:{kind:s.tower.kind,base:s.tower.base,spent:s.tower.spent,ench:{...s.tower.ench},mode:s.tower.mode}}:{tower:null});
     localStorage.setItem(SAVE_KEY,JSON.stringify({v:2,diff:D.id,money:G.money,lives:G.lives,wave:G.wave,killed:G.killed,escaped:G.escaped,slots}));
   }catch(e){}
 }
 function clearSavedGame(){try{localStorage.removeItem(SAVE_KEY);}catch(e){}}
+const isNum=v=>typeof v==='number'&&Number.isFinite(v);
+const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
 function readSave(){
-  try{const sv=JSON.parse(localStorage.getItem(SAVE_KEY));return sv&&(sv.v===1||sv.v===2)&&DIFFS[sv.diff]?sv:null;}catch(e){return null;}
+  try{
+    const sv=JSON.parse(localStorage.getItem(SAVE_KEY));
+    if(!sv||sv.v!==2||!DIFFS[sv.diff]||!Array.isArray(sv.slots))return null;
+    if(!isNum(sv.money)||!isNum(sv.lives)||!isNum(sv.wave))return null;
+    return sv;
+  }catch(e){return null;}
 }
 function loadSavedGame(){
   const sv=readSave();if(!sv)return false;
   init(sv.diff);
-  G.money=sv.money;G.lives=sv.lives;G.wave=sv.wave;G.killed=sv.killed||0;G.escaped=sv.escaped||0;G.phase='prep';
+  G.money=clamp(Math.floor(sv.money),0,1e7);
+  G.lives=clamp(Math.floor(sv.lives),1,D.lives);
+  G.wave=clamp(Math.floor(sv.wave),1,WAVE_COUNT-1);
+  G.killed=isNum(sv.killed)?clamp(Math.floor(sv.killed),0,1e6):0;
+  G.escaped=isNum(sv.escaped)?clamp(Math.floor(sv.escaped),0,1e6):0;
+  G.phase='prep';
   for(let i=0;i<sv.slots.length&&i<G.slots.length;i++){
-    const sd=sv.slots[i];
-    if(!sd||!sd.tower||!TD[sd.tower.kind])continue;
+    const sd=sv.slots[i],slot=G.slots[i];
+    if(!sd||!sd.tower||typeof sd.tower.kind!=='string'||!Object.prototype.hasOwnProperty.call(TD,sd.tower.kind))continue;
+    const def=TD[sd.tower.kind];
+    if(def.k!==slot.k)continue;                       // a turret in a trap slot (or vice versa)
     const t=mkTower(sd.tower.kind);
-    if(sv.v===2){
-      t.spent=sd.tower.spent||t.base;
-      t.ench={element:sd.tower.ench&&ENCH[sd.tower.ench.element]?sd.tower.ench.element:null,
-              rune:sd.tower.ench&&ENCH[sd.tower.ench.rune]?sd.tower.ench.rune:null};
-      if(MODES.includes(sd.tower.mode))t.mode=sd.tower.mode;
-    }else if(sd.tower.ups&&sd.tower.ups.pierce){
-      t.ench.rune='pierce';t.spent=t.base+enchCost(t.kind,'pierce',0);
+    if(isNum(sd.tower.spent))t.spent=clamp(sd.tower.spent,t.base,1e6);
+    const en=sd.tower.ench||{};
+    for(const part of['element','rune']){
+      const id=en[part];
+      if(typeof id==='string'&&Object.prototype.hasOwnProperty.call(ENCH,id)&&ENCH[id].slot===part&&def.ench.includes(id))t.ench[part]=id;
     }
-    G.slots[i].tower=t;
+    if(MODES.includes(sd.tower.mode))t.mode=sd.tower.mode;
+    slot.tower=t;
   }
   hud();resetControls();
   return true;
 }
 function showResumePrompt(sv){
-  document.getElementById('rs-info').innerHTML=
-    '<strong>DIFFICULTY</strong>  '+DIFFS[sv.diff].name+'<br>'+
-    '<strong>WAVE</strong>  '+sv.wave+' / '+WAVE_COUNT+'<br>'+
-    '<strong>HEARTS</strong>  '+sv.lives+'<br>'+
-    '<strong>FUNDS</strong>  $'+sv.money;
+  const box=document.getElementById('rs-info');
+  box.textContent='';
+  const rows=[['DIFFICULTY',DIFFS[sv.diff].name],['WAVE',clamp(Math.floor(sv.wave),1,WAVE_COUNT-1)+' / '+WAVE_COUNT],
+              ['HEARTS',clamp(Math.floor(sv.lives),1,999)],['FUNDS','$'+clamp(Math.floor(sv.money),0,1e7)]];
+  for(const [k,v] of rows){
+    const st=document.createElement('strong');st.textContent=k;
+    box.append(st,'  '+v,document.createElement('br'));
+  }
   document.getElementById('rs').classList.add('o');
 }
 document.getElementById('rs-yes').addEventListener('click',()=>{
@@ -1449,11 +1477,18 @@ document.getElementById('rs-no').addEventListener('click',()=>{
 });
 
 // ─── MAIN LOOP ───────────────────────────────────────────────────────────────
+// Advance the simulation in small fixed steps. A fragment moves 240px/s, so at 3x speed a
+// single 0.21s step would jump ~50px and skip right over an enemy; 25ms steps keep it ~6px.
+const MAX_STEP=0.025;
+function advance(dt){
+  if(gamePaused){tickFx(dt);return;}
+  while(dt>1e-6){const h=Math.min(dt,MAX_STEP);dt-=h;upd(h);}
+}
 function loop(ts){
   let dt=Math.min((ts-lastT)/1000,.07);lastT=ts;
   if(!G){requestAnimationFrame(loop);return;}
-  dt*=gameSpeed;
-  if(!gamePaused)upd(dt);else tickFx(dt);
+  advance(dt*gameSpeed);
+  flushHud();
   draw();requestAnimationFrame(loop);
 }
 {const sv=readSave();if(sv)showResumePrompt(sv);else showDifficultySelect();}

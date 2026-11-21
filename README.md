@@ -14,14 +14,15 @@ Settings → Pages → deploy from branch, root folder. `index.html` is the land
 ## Monster Turret Defense rules
 
 - Every monster has **armor** and **health**. Damage hits armor first, then health.
-- **Piercing** upgrades bypass armor and damage health directly.
-- Difficulty tuning lives in the `DIFFS` table in the HTML; enemies in `EDEF`; turrets in `TD`; waves in `WAVES`.
+- The **Rune of Piercing** (an enchantment, bought from a turret's menu) bypasses armor and damages health directly.
+- Tuning lives in the HTML: difficulty in `DIFFS`, enemies in `EDEF`, turrets and traps in `TD`, waves in `BASE_WAVES` (waves 1-10) and `waveDef()` (11-50) with `hpScale`/`armorScale`/`rewScale`.
+- Progress is saved between waves (never mid-wave), so resuming restarts the next wave.
 
 ### Turrets, traps and runes
 
 - **Turrets:** Gatling, Frost Totem, Shrapnel Cannon, Crossbow Ballista, Brazier, Holy Shrine, Bomb Launcher, Tesla Coil, War Drum, Sniper Nest.
 - **Traps (path slots):** Landmine, Tar Pit, Spike Trap, Bear Trap, Oil Slick (erupts when hit by fire), Grinder.
-- **Runes:** each turret has one *element* slot (Fire, Frost, Lightning) and one *rune* slot (Piercing, Corrosion, Haste, Far-Sight, Echo, Plunder, Sunfire, Time). The second enchantment on a turret costs 50% more.
+- **Runes:** each turret has one *element* slot (Fire, Frost, Lightning) and one *rune* slot (Piercing, Corrosion, Haste, Far-Sight, Echo, Plunder, Sunfire, Time; a turret can only take the runes that make sense for it). The second enchantment on a turret costs 50% more.
 - Everything is data-driven: `TD` (turrets/traps), `ST` (stats), `ENCH` (runes), `TB` (behaviors).
 
 ### Boss: the King Zombie
