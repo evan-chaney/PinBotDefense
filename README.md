@@ -4,7 +4,7 @@ Two single-file browser tower defense games, served from a landing page (`index.
 
 | Game | File | Notes |
 |------|------|-------|
-| **Monster Turret Defense** | `monster-turret-defense.html` | Zombies, skeletons and spiders with armor + health. 8 turrets, 6 traps, 11 enchantment runes. Normal / Hard / Hardcore. 1 map, 10 waves. |
+| **Monster Turret Defense** | `monster-turret-defense.html` | Zombies, skeletons and spiders with armor + health. 10 turrets, 6 traps, 11 enchantment runes. Normal / Hard / Hardcore. 1 map, 10 waves. |
 | **PinBot Defense** | `pinbot-defense.html` | Robots that shoot pins pop balloons. 5 maps, 50 waves, bosses, superpowers. |
 
 ## Hosting on GitHub Pages
