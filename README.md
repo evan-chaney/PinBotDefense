@@ -25,6 +25,16 @@ Settings → Pages → deploy from branch, root folder. `index.html` is the land
 - **Runes:** each turret has one *element* slot (Fire, Frost, Lightning) and one *rune* slot (Piercing, Corrosion, Haste, Far-Sight, Echo, Plunder, Sunfire, Time; a turret can only take the runes that make sense for it). The second enchantment on a turret costs 50% more.
 - Everything is data-driven: `TD` (turrets/traps), `ST` (stats), `ENCH` (runes), `TB` (behaviors).
 
-### Boss: the King Zombie
+### Bosses
 
-Appears on waves 10, 20, 30, 40 and 50 at the head of a horde (60% of a normal wave). Health 120 → 1600, armor 3x a green zombie, slow. It resists crowd control (immune to bear traps, stuns halved, slows halved). If it escapes it costs 3-8 hearts (doubled on Hard). Tuned in `BOSS_TIERS`, `BOSS_ARMOR_MULT` and `BOSS_ESCORT`.
+Defined in `BOSSES` (behavior) and `BOSS_SCHEDULE` (per-wave stats, escort size, hearts drained if it escapes). Full bosses resist crowd control (immune to bear traps, stuns halved, slows halved); mini-bosses don't.
+
+| Wave | Boss | Ability |
+|------|------|---------|
+| 10 | King Zombie | Slow, tanky, 3x a green zombie's armor |
+| 20 | Spider Queen | Spawns spiderlings every 2.2s (up to 10) |
+| 30 | Bone Colossus | Huge armor that regenerates if left unhit for 3s |
+| 40 | Lich | Raises one fallen monster nearby every 4s (not if Holy Shrine / Sunfire finished it) |
+| 50 | Death Knight + King Zombie | Death Knight charges at 2x speed below half health |
+
+Mini-bosses: **Werewolf** (waves 5, 25, 45; fast, enrages at half health) and **Gravedigger** (waves 15, 35, 45; at half health it tunnels, untouchable, 30% of the way down the path, skipping traps).
