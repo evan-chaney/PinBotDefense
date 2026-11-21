@@ -11,17 +11,19 @@ html,body{width:100%;height:100%;overflow:hidden;background:#070b07;}
 body{display:flex;justify-content:center;align-items:center;font-family:'Share Tech Mono','Courier New',monospace;}
 #app{width:360px;max-width:100vw;height:100%;display:flex;flex-direction:column;overflow:hidden;}
 #hud{background:#0e160e;border-bottom:2px solid #22351f;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;z-index:5;gap:6px;}
-.st{display:flex;flex-direction:column;align-items:center;min-width:46px;}
+.st{display:flex;flex-direction:column;align-items:center;min-width:40px;}
 .sl{font-size:7px;color:#3a6a34;text-transform:uppercase;letter-spacing:2px;margin-bottom:1px;}
 .sv{font-size:19px;font-weight:bold;line-height:1;}
 .sv.lv{color:#e0504a;}.sv.lv.lo{animation:blink .5s infinite alternate;}
 .sv.mn{color:#e6b800;}.sv.wv{color:#7fd35a;}
 @keyframes blink{from{opacity:1}to{opacity:.4}}
-.btn{background:#0a1a0a;border:1.5px solid #2f7a2a;color:#7fd35a;font-family:inherit;font-size:10px;font-weight:bold;padding:6px 9px;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;transition:all .15s;white-space:nowrap;border-radius:3px;}
+.btn{background:#0a1a0a;border:1.5px solid #2f7a2a;color:#7fd35a;font-family:inherit;font-size:10px;font-weight:bold;padding:6px 7px;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;transition:all .15s;white-space:nowrap;border-radius:3px;}
 .btn:hover:not(:disabled){background:#27601f;color:#fff;}
 .btn:disabled{background:#0e160e;color:#1c3a18;border-color:#142a12;cursor:default;}
 #bw.pause{border-color:#58a6ff;color:#58a6ff;background:#070b07;}
 #bw.resume{border-color:#e6b800;color:#e6b800;background:#140f00;}
+#sk{border-color:#6a4aa0;color:#a080e0;background:#140a1e;}
+#sk:hover:not(:disabled){background:#2a1040;color:#d0b0ff;}
 #ff{border-color:#3a5a38;color:#5f8a58;background:#0a140a;}
 #ff.fast{border-color:#e6b800;color:#e6b800;background:#140f00;}
 #cw{flex:1;display:flex;justify-content:center;align-items:center;overflow:hidden;}
@@ -71,6 +73,7 @@ body{display:flex;justify-content:center;align-items:center;font-family:'Share T
     <div class="st"><div class="sl">$ Funds</div><div class="sv mn" id="vm">0</div></div>
     <div class="st"><div class="sl">Wave</div><div class="sv wv" id="vw">0/10</div></div>
     <button class="btn" id="ff">▶▶ 1×</button>
+    <button class="btn" id="sk">⏭ W25</button>
     <button class="btn" id="bw">▶ START</button>
   </div>
   <div id="cw"><canvas id="gc"></canvas></div>
@@ -127,7 +130,7 @@ function posAt(d){
 // money: starting funds · rewMult: kill reward multiplier · hpMult: enemy health multiplier
 // countMult: wave size multiplier · drain: hearts lost per escaped enemy
 const DIFFS={
-  normal:  {name:'NORMAL',  col:'#4fbf3a',money:550,lives:20,rewMult:1,  hpMult:1,  countMult:1,   drain:1,
+  normal:  {name:'NORMAL',  col:'#4fbf3a',money:550,lives:25,rewMult:1,  hpMult:1,  countMult:1,   drain:1,
             desc:'The standard experience.'},
   hard:    {name:'HARD',    col:'#e0a020',money:400,lives:20,rewMult:.8, hpMult:1.2,countMult:1.25,drain:2,
             desc:'Less money, longer waves, tougher monsters. Escapees cost 2 hearts each.'},
@@ -218,8 +221,10 @@ const CANNON={cd:1.6,shellSpd:230,frags:12,fragDmg:1,fragSpd:240,fragRange:75};
 const BOMB  ={cd:3.0,spd:170,radius:52,dmg:5};
 const MODES=['strongest','armored','first','last'];
 
-// ─── WAVES (10) ──────────────────────────────────────────────────────────────
-const WAVES=[
+// ─── WAVES (50) ──────────────────────────────────────────────────────────────
+// Waves 1-10 are hand-written. After that, wave size grows steadily and monsters scale:
+//   HP +5%/wave, armor +3%/wave, kill rewards +3%/wave (all relative to wave 10).
+const BASE_WAVES=[
   {g:8 },                               // 1
   {g:12},                               // 2
   {g:10,r:4},                           // 3  red zombies
@@ -229,9 +234,24 @@ const WAVES=[
   {g:8, r:6, s:6, p:6},                 // 7  spiders
   {g:10,r:8, s:8, p:8},                 // 8
   {g:10,r:10,s:10,p:10},                // 9
-  {g:12,r:12,s:12,p:12},                // 10 final
+  {g:12,r:12,s:12,p:12},                // 10
 ];
-const WAVE_COUNT=WAVES.length;
+const WAVE_COUNT=50;
+const SKIP_TO=25;
+function waveDef(n){
+  if(n<=BASE_WAVES.length)return BASE_WAVES[n-1];
+  const total=Math.round(48+(n-10)*1.5);           // 48 at wave 10 → 108 at wave 50
+  const wt=[1,1,1,1];wt[n%4]=1.5;                   // each wave leans on one monster type
+  const sum=wt.reduce((a,b)=>a+b,0);
+  const c=wt.map(w=>Math.floor(total*w/sum));
+  c[0]+=total-c.reduce((a,b)=>a+b,0);
+  return{g:c[0],r:c[1],s:c[2],p:c[3]};
+}
+const over10=n=>Math.max(0,n-10);
+const hpScale=n=>1+over10(n)*.05;
+const armorScale=n=>1+over10(n)*.03;
+const rewScale=n=>1+over10(n)*.03;
+const spawnGap=n=>Math.max(.35,.6-over10(n)*.006);
 
 let G,D,lastT=0,eid=0,gameSpeed=1,gamePaused=false;
 
@@ -344,6 +364,14 @@ function hud(){
   document.getElementById('infobar').textContent=D.name+' · TAP SLOT TO BUILD · TAP TURRET TO ENCHANT/SELL';
 }
 
+function waveTotal(n){const w=waveDef(n);return['g','r','s','p'].reduce((a,k)=>a+Math.ceil((w[k]||0)*D.countMult),0);}
+// Estimated income from waves 1..n-1 (65% of kills, like the original's skip button)
+function skipFunds(n){
+  const map={g:'green',r:'red',s:'skeleton',p:'spider'};let sum=0;
+  for(let w=1;w<n;w++){const d=waveDef(w);
+    for(const k in map)sum+=Math.ceil((d[k]||0)*D.countMult)*Math.round(EDEF[map[k]].rew*D.rewMult*rewScale(w));}
+  return D.money+Math.floor(sum*.65);
+}
 function buildQueue(w){
   const q=[],map={g:'green',r:'red',s:'skeleton',p:'spider'};
   for(const k in map){const n=Math.ceil((w[k]||0)*D.countMult);for(let i=0;i<n;i++)q.push(map[k]);}
@@ -353,18 +381,19 @@ function buildQueue(w){
 
 function startWave(){
   G.wave++;
-  G.spawnQ=buildQueue(WAVES[G.wave-1]);
+  G.spawnQ=buildQueue(waveDef(G.wave));
   G.spawnTimer=0.45;G.phase='wave';
   G.flt.push({x:W/2,y:H/2-20,txt:'WAVE '+G.wave,sub:G.spawnQ.length+' INCOMING',life:1.8,max:1.8,big:true});
   SFX.waveStart();
   hud();
 }
 
-function mkEnemy(type){
-  const def=EDEF[type];
-  const hp=Math.ceil(def.hp*D.hpMult);
-  return{id:eid++,type,hp,maxHp:hp,armor:def.armor,maxArmor:def.armor,spd:def.spd,d:-20,r:def.r,
-    rew:Math.round(def.rew*D.rewMult),dead:false,flash:0,slow:null,burn:null,rootT:0,stunT:0};
+function mkEnemy(type,wave){
+  const def=EDEF[type],w=wave||1;
+  const hp=Math.ceil(def.hp*D.hpMult*hpScale(w));
+  const armor=Math.ceil(def.armor*armorScale(w));
+  return{id:eid++,type,hp,maxHp:hp,armor,maxArmor:armor,spd:def.spd,d:-20,r:def.r,
+    rew:Math.round(def.rew*D.rewMult*rewScale(w)),dead:false,flash:0,slow:null,burn:null,rootT:0,stunT:0};
 }
 
 const BLOOD={green:'#5fb04a',red:'#b02a2a',skeleton:'#ece6d2',spider:'#4a8a3a'};
@@ -656,8 +685,8 @@ function upd(dt){
   // Spawn
   G.spawnTimer-=dt;
   if(G.spawnTimer<=0&&G.spawnQ.length>0){
-    G.en.push(mkEnemy(G.spawnQ.shift()));
-    G.spawnTimer=G.spawnQ.length?0.6:0;
+    G.en.push(mkEnemy(G.spawnQ.shift(),G.wave));
+    G.spawnTimer=G.spawnQ.length?spawnGap(G.wave):0;
   }
 
   // Move enemies (status effects first)
@@ -1234,6 +1263,7 @@ document.getElementById('bw').addEventListener('click',()=>{
   if(!G)return;
   const bw=document.getElementById('bw');
   if(G.phase==='prep'){
+    document.getElementById('sk').style.display='none';
     startWave();
     bw.textContent='⏸ PAUSE';bw.className='btn pause';bw.disabled=false;
   }else if(G.phase==='wave'||G.phase==='between'){
@@ -1241,6 +1271,16 @@ document.getElementById('bw').addEventListener('click',()=>{
     if(gamePaused){bw.textContent='▶ RESUME';bw.className='btn resume';}
     else{bw.textContent='⏸ PAUSE';bw.className='btn pause';}
   }
+});
+document.getElementById('sk').addEventListener('click',()=>{
+  if(!G||G.phase!=='prep'||G.wave!==0)return;
+  const funds=skipFunds(SKIP_TO);
+  G.money=funds;G.wave=SKIP_TO-1;
+  document.getElementById('sk').style.display='none';
+  hud();startWave();
+  const bw=document.getElementById('bw');
+  bw.textContent='⏸ PAUSE';bw.className='btn pause';bw.disabled=false;
+  G.flt.push({x:W/2,y:H/2+30,txt:'SKIPPED TO WAVE '+SKIP_TO,sub:'Starting funds: $'+funds,life:2.5,max:2.5,big:true});
 });
 document.getElementById('ob').addEventListener('click',()=>{
   document.getElementById('ov').classList.remove('o');
@@ -1251,6 +1291,7 @@ function resetControls(){
   gameSpeed=1;
   const ff=document.getElementById('ff');ff.textContent='▶▶ 1×';ff.classList.remove('fast');
   const bw=document.getElementById('bw');bw.textContent='▶ START';bw.className='btn';bw.disabled=false;
+  document.getElementById('sk').style.display=(G&&G.wave===0)?'':'none';
 }
 
 function endGame(win){
@@ -1258,7 +1299,7 @@ function endGame(win){
   const ov=document.getElementById('ov');
   ov.querySelector('#ot').textContent=win?'GRAVEYARD\nSECURED':'YOU WERE\nOVERRUN';
   ov.querySelector('#ot').style.color=win?'#7fd35a':'#f85149';
-  const total=WAVES.reduce((a,w)=>a+Math.ceil((w.g||0)*D.countMult)+Math.ceil((w.r||0)*D.countMult)+Math.ceil((w.s||0)*D.countMult)+Math.ceil((w.p||0)*D.countMult),0);
+  let total=0;for(let n=1;n<=WAVE_COUNT;n++)total+=waveTotal(n);
   ov.querySelector('#os').textContent=
     (win?'All '+WAVE_COUNT+' waves defeated!':'The horde broke through.')+
     '\n\nDifficulty:      '+D.name+
